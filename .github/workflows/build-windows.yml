@@ -1,0 +1,32 @@
+name: Build Windows
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build portable app
+        shell: pwsh
+        run: dotnet build src/GPTUsageWidget.csproj --configuration Release --output release
+
+      - name: Create portable package
+        shell: pwsh
+        run: Compress-Archive -Path release/GPTUsageWidget.exe, README.md -DestinationPath GPT-Usage-Widget-win-portable.zip -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GPT-Usage-Widget-win-portable
+          path: GPT-Usage-Widget-win-portable.zip

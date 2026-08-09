@@ -1,0 +1,11 @@
+GPT Usage Widget v0.2.0
+
+双击 GPTUsageWidget.exe，或使用桌面的“GPT Usage Widget”快捷方式启动。
+
+- 每 5 秒自动刷新今日 Token 与周额度。
+- 拖动任意边缘或四角，可连续自由缩放窗口。
+- 拖动窗口空白区域可以移动。
+- PIN 切换置顶，X 关闭。
+- 只读取本机 Codex 会话文件，不需要 API Key，也不会联网。
+
+完整源码、构建脚本和 GitHub Actions 配置请查看本目录的 README.md。

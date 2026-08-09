@@ -1,0 +1,8 @@
+.vs/
+bin/
+obj/
+release/
+*.user
+*.suo
+*.pdb
+GPTUsageWidget.exe
