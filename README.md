@@ -1,6 +1,6 @@
 # Codex Usage Widget
 
-一个轻量、无边框、可自由缩放的 Windows 桌面小组件，用于实时查看本机 Codex：
+一个轻量、无边框的 Windows 桌面小组件，用于实时查看本机 Codex。窗口会随尺寸自动切换形态：最小尺寸是只显示周额度百分比的圆形额度球，放大后则显示完整面板。
 
 - 今日 Token 总量
 - Input / Output / Cached Token 明细
@@ -11,9 +11,11 @@
 
 ## Download for Windows
 
-**[Download GPT Usage Widget v0.2.0](download/GPT-Usage-Widget-v0.2.0-win-portable.zip)**
+**[Download Codex Usage Widget v0.3.0](download/Codex-Usage-Widget-v0.3.0-win-portable.zip)**
 
 下载 ZIP 后解压，双击 `GPTUsageWidget.exe` 即可。无需安装，也不需要 API Key。
+
+SHA-256：`497AA591EE0330FF299CFAD85A35AABDEBFE0BA9DA5166EF43A3B79F0001256F`
 
 ## 使用
 
@@ -21,9 +23,13 @@
 
 - 每 5 秒自动刷新。
 - 拖动窗口空白区域可移动。
-- 拖动任意边缘或四个角可连续缩放。
+- 拖动任意边缘或四个角可缩放；最小为 144×144 的圆形额度球，完整面板最大为 480×360。
+- 尺寸低于完整面板阈值时只显示周额度百分比；双击窗口可在圆球与标准面板之间快速切换。
+- 右键窗口可立即刷新、切换置顶、切换尺寸或退出。
 - 点击 `PIN` 切换置顶，点击 `X` 关闭。
 - 重复启动不会产生多个窗口。
+
+也可以使用 `GPTUsageWidget.exe --compact` 直接以圆形额度球启动。
 
 ## 数据与隐私
 
@@ -62,3 +68,4 @@
 - 单文件 WinExe
 - 无第三方运行时依赖
 - 本地只读扫描，活动会话文件使用共享读取
+- 缩放时强制完整重绘并裁切窗口区域，避免无边框窗口残影

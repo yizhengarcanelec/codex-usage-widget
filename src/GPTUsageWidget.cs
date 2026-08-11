@@ -12,11 +12,11 @@ using System.Threading.Tasks;
 using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
-[assembly: AssemblyTitle("GPT Usage Widget")]
+[assembly: AssemblyTitle("Codex Usage Widget")]
 [assembly: AssemblyDescription("A local Codex token and weekly quota widget for Windows")]
-[assembly: AssemblyProduct("GPT Usage Widget")]
-[assembly: AssemblyVersion("0.2.0.0")]
-[assembly: AssemblyFileVersion("0.2.0.0")]
+[assembly: AssemblyProduct("Codex Usage Widget")]
+[assembly: AssemblyVersion("0.3.0.0")]
+[assembly: AssemblyFileVersion("0.3.0.0")]
 
 internal sealed class UsageSnapshot
 {
@@ -192,8 +192,16 @@ internal sealed class WidgetForm : Form
     private readonly Button pinButton;
     private readonly System.Windows.Forms.Timer refreshTimer;
     private readonly ToolTip toolTip;
+    private readonly List<Control> detailControls = new List<Control>();
     private bool refreshing;
     private double lastRemainingPercent;
+    private bool compactMode;
+    private string compactText = "--%";
+    private Color compactAccent = Green;
+
+    private const int CompactDiameter = 144;
+    private const int DetailMinWidth = 320;
+    private const int DetailMinHeight = 250;
 
     private static readonly Color Bg = Color.FromArgb(16, 20, 28);
     private static readonly Color Card = Color.FromArgb(23, 28, 38);
@@ -204,12 +212,14 @@ internal sealed class WidgetForm : Form
 
     [DllImport("user32.dll")] private static extern bool ReleaseCapture();
     [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
+    [DllImport("user32.dll")] private static extern bool RedrawWindow(IntPtr hWnd, IntPtr updateRect, IntPtr updateRegion, uint flags);
 
-    public WidgetForm()
+    public WidgetForm(bool startCompact)
     {
-        Text = "GPT Usage Widget";
+        Text = "Codex Usage Widget";
         ClientSize = new Size(360, 286);
-        MinimumSize = new Size(320, 250);
+        MinimumSize = new Size(CompactDiameter, CompactDiameter);
+        MaximumSize = new Size(480, 360);
         FormBorderStyle = FormBorderStyle.None;
         BackColor = Bg;
         ForeColor = White;
@@ -218,6 +228,8 @@ internal sealed class WidgetForm : Form
         StartPosition = FormStartPosition.Manual;
         Icon = SystemIcons.Application;
         DoubleBuffered = true;
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        UpdateStyles();
         AutoScaleMode = AutoScaleMode.Dpi;
         Font = new Font("Segoe UI", 9F);
 
@@ -251,6 +263,7 @@ internal sealed class WidgetForm : Form
 
         var card = new Panel { Location = new Point(16, 135), Size = new Size(328, 108), BackColor = Card, Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right };
         card.Paint += delegate(object s, PaintEventArgs e) { using (var p = new Pen(Color.FromArgb(37, 44, 57))) e.Graphics.DrawRectangle(p, 0, 0, card.Width - 1, card.Height - 1); };
+        card.Resize += delegate { card.Invalidate(); };
         Controls.Add(card);
         card.Controls.Add(MakeLabel("WEEKLY LEFT", 13, 12, 130, 18, 8.5F, Muted, FontStyle.Bold));
         weeklyValue = MakeLabel("--%", 222, 8, 90, 27, 17F, Green, FontStyle.Bold);
@@ -276,13 +289,29 @@ internal sealed class WidgetForm : Form
         localOnly.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
         Controls.Add(localOnly);
 
+        foreach (Control control in Controls) detailControls.Add(control);
+
         toolTip = new ToolTip();
         MouseDown += DragWindow;
+        DoubleClick += ToggleSizeMode;
         foreach (Control control in Controls) if (!(control is Button)) control.MouseDown += DragWindow;
+
+        var menu = new ContextMenuStrip();
+        menu.Items.Add("Expand / compact", null, delegate { ToggleSizeMode(this, EventArgs.Empty); });
+        menu.Items.Add("Refresh now", null, delegate { RefreshSnapshot(); });
+        menu.Items.Add("Toggle always on top", null, delegate { pinButton.PerformClick(); });
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("Close", null, delegate { Close(); });
+        ContextMenuStrip = menu;
 
         refreshTimer = new System.Windows.Forms.Timer { Interval = 5000 };
         refreshTimer.Tick += delegate { RefreshSnapshot(); };
-        Shown += delegate { refreshTimer.Start(); RefreshSnapshot(); };
+        Shown += delegate { UpdateLayoutMode(); refreshTimer.Start(); RefreshSnapshot(); };
+        if (startCompact)
+        {
+            ClientSize = new Size(CompactDiameter, CompactDiameter);
+            Location = new Point(work.Right - Width - 20, work.Bottom - Height - 20);
+        }
     }
 
     private static Label MakeLabel(string text, int x, int y, int width, int height, float size, Color color, FontStyle style)
@@ -301,8 +330,68 @@ internal sealed class WidgetForm : Form
     private void DragWindow(object sender, MouseEventArgs e)
     {
         if (e.Button != MouseButtons.Left) return;
+        if (e.Clicks > 1) return;
         ReleaseCapture();
         SendMessage(Handle, 0xA1, 0x2, 0);
+    }
+
+    private void ToggleSizeMode(object sender, EventArgs e)
+    {
+        Rectangle before = Bounds;
+        ClientSize = compactMode ? new Size(360, 286) : new Size(CompactDiameter, CompactDiameter);
+        Rectangle work = Screen.FromRectangle(before).WorkingArea;
+        int x = Math.Max(work.Left, Math.Min(work.Right - Width, before.Right - Width));
+        int y = Math.Max(work.Top, Math.Min(work.Bottom - Height, before.Bottom - Height));
+        Location = new Point(x, y);
+    }
+
+    private void UpdateLayoutMode()
+    {
+        if (detailControls.Count == 0) return;
+        bool nextCompact = ClientSize.Width < DetailMinWidth || ClientSize.Height < DetailMinHeight;
+        compactMode = nextCompact;
+
+        foreach (Control control in detailControls) control.Visible = !compactMode;
+
+        UpdateWindowRegion();
+    }
+
+    private void UpdateWindowRegion()
+    {
+        if (ClientSize.Width <= 0 || ClientSize.Height <= 0) return;
+        GraphicsPath path;
+        bool circular = compactMode && Math.Abs(ClientSize.Width - ClientSize.Height) <= 8;
+        if (circular)
+        {
+            path = new GraphicsPath();
+            path.AddEllipse(0, 0, ClientSize.Width, ClientSize.Height);
+        }
+        else
+        {
+            int radius = compactMode ? Math.Min(ClientSize.Width, ClientSize.Height) / 2 : 12;
+            path = RoundedPath(new Rectangle(0, 0, ClientSize.Width, ClientSize.Height), radius);
+        }
+
+        Region oldRegion = Region;
+        Region = new Region(path);
+        if (oldRegion != null) oldRegion.Dispose();
+        path.Dispose();
+    }
+
+    private static GraphicsPath RoundedPath(Rectangle bounds, int radius)
+    {
+        var path = new GraphicsPath();
+        int diameter = Math.Max(2, radius * 2);
+        Rectangle arc = new Rectangle(bounds.X, bounds.Y, diameter, diameter);
+        path.AddArc(arc, 180, 90);
+        arc.X = bounds.Right - diameter;
+        path.AddArc(arc, 270, 90);
+        arc.Y = bounds.Bottom - diameter;
+        path.AddArc(arc, 0, 90);
+        arc.X = bounds.Left;
+        path.AddArc(arc, 90, 90);
+        path.CloseFigure();
+        return path;
     }
 
     private static string Compact(long value)
@@ -331,6 +420,7 @@ internal sealed class WidgetForm : Form
             if (snapshot.HasWeekly)
             {
                 weeklyValue.Text = snapshot.RemainingPercent.ToString("0.#", CultureInfo.InvariantCulture) + "%";
+                compactText = weeklyValue.Text;
                 lastRemainingPercent = snapshot.RemainingPercent;
                 string plan = String.IsNullOrEmpty(snapshot.Plan) ? "CODEX" : snapshot.Plan.ToUpperInvariant();
                 weeklyDetail.Text = snapshot.UsedPercent.ToString("0.#", CultureInfo.InvariantCulture) + "% used  |  " + plan;
@@ -339,27 +429,26 @@ internal sealed class WidgetForm : Form
                 Color accent = snapshot.RemainingPercent > 50 ? Green : snapshot.RemainingPercent > 20 ? Color.FromArgb(251, 191, 36) : Color.FromArgb(251, 113, 133);
                 progressFill.BackColor = accent;
                 weeklyValue.ForeColor = accent;
+                compactAccent = accent;
             }
             else
             {
                 weeklyValue.Text = "--%";
+                compactText = "--%";
+                compactAccent = Muted;
                 weeklyDetail.Text = "No weekly sample yet";
                 resetValue.Text = "";
                 progressFill.Width = 0;
                 lastRemainingPercent = 0;
             }
             statusValue.Text = "Updated " + snapshot.GeneratedAt.ToString("HH:mm:ss") + " | every 5s" + (snapshot.Partial ? " | partial history" : "");
+            Invalidate();
         }
         catch
         {
             statusValue.Text = "Waiting for Codex session data...";
         }
         finally { refreshing = false; }
-    }
-
-    protected override CreateParams CreateParams
-    {
-        get { var cp = base.CreateParams; cp.ClassStyle |= 0x00020000; return cp; }
     }
 
     protected override void WndProc(ref Message m)
@@ -393,16 +482,50 @@ internal sealed class WidgetForm : Form
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
+        UpdateLayoutMode();
         if (progressTrack != null && progressFill != null)
             progressFill.Width = Math.Max(0, Math.Min(progressTrack.Width, (int)Math.Round(progressTrack.Width * lastRemainingPercent / 100.0)));
-        Invalidate();
+        Invalidate(true);
+        if (IsHandleCreated)
+            RedrawWindow(Handle, IntPtr.Zero, IntPtr.Zero, 0x0001 | 0x0004 | 0x0080 | 0x0400);
+    }
+
+    protected override void OnPaintBackground(PaintEventArgs e)
+    {
+        e.Graphics.Clear(Bg);
     }
 
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        using (var pen = new Pen(Color.FromArgb(30, 38, 51))) e.Graphics.DrawRectangle(pen, 0, 0, Width - 1, Height - 1);
+        if (compactMode)
+        {
+            int inset = Math.Max(8, Math.Min(ClientSize.Width, ClientSize.Height) / 14);
+            int diameter = Math.Min(ClientSize.Width, ClientSize.Height) - inset * 2;
+            var ringBounds = new Rectangle((ClientSize.Width - diameter) / 2, (ClientSize.Height - diameter) / 2, diameter, diameter);
+            using (var track = new Pen(Color.FromArgb(42, 49, 64), Math.Max(6, diameter / 18)))
+                e.Graphics.DrawEllipse(track, ringBounds);
+            Color accent = compactAccent;
+            using (var progress = new Pen(accent, Math.Max(6, diameter / 18)))
+            {
+                progress.StartCap = LineCap.Round;
+                progress.EndCap = LineCap.Round;
+                float sweep = (float)Math.Max(0, Math.Min(359.9, 360.0 * lastRemainingPercent / 100.0));
+                if (sweep > 0) e.Graphics.DrawArc(progress, ringBounds, -90, sweep);
+            }
+            float fontSize = Math.Max(24F, Math.Min(38F, Math.Min(ClientSize.Width, ClientSize.Height) * 0.24F));
+            using (var font = new Font("Segoe UI", fontSize, FontStyle.Bold))
+            using (var brush = new SolidBrush(compactAccent))
+            using (var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+                e.Graphics.DrawString(compactText, font, brush, ClientRectangle, format);
+        }
+        else
+        {
+            using (GraphicsPath borderPath = RoundedPath(new Rectangle(0, 0, ClientSize.Width - 1, ClientSize.Height - 1), 12))
+            using (var pen = new Pen(Color.FromArgb(42, 49, 64)))
+                e.Graphics.DrawPath(pen, borderPath);
+        }
     }
 }
 
@@ -418,7 +541,8 @@ internal static class Program
         if (!created) return;
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
-        try { Application.Run(new WidgetForm()); }
+        bool startCompact = Environment.GetCommandLineArgs().Any(arg => String.Equals(arg, "--compact", StringComparison.OrdinalIgnoreCase));
+        try { Application.Run(new WidgetForm(startCompact)); }
         finally { instanceMutex.ReleaseMutex(); instanceMutex.Dispose(); }
     }
 }
