@@ -11,7 +11,7 @@
 
 ## Download for Windows
 
-**[Download Codex Usage Widget v0.3.0](download/Codex-Usage-Widget-v0.3.0-win-portable.zip)**
+**[Download Codex Usage Widget v0.3.0](https://github.com/yizhengarcanelec/codex-usage-widget/raw/main/download/Codex-Usage-Widget-v0.3.0-win-portable.zip)**
 
 下载 ZIP 后解压，双击 `GPTUsageWidget.exe` 即可。无需安装，也不需要 API Key。
 
