@@ -1,6 +1,6 @@
 # Codex Usage Widget
 
-一个轻量、无边框的 Windows 桌面小组件，用于实时查看本机 Codex。窗口会随尺寸自动切换形态：最小尺寸是只显示周额度百分比的圆形额度球，放大后则显示完整面板。
+一个轻量、无边框的 Windows 桌面小组件，用于实时查看本机 Codex。窗口支持分级响应式布局：完整面板、窄面板、仅今日 Token 面板，以及最小圆形额度球。
 
 - 今日 Token 总量
 - Input / Output / Cached Token 明细
@@ -11,11 +11,11 @@
 
 ## Download for Windows
 
-**[Download Codex Usage Widget v0.3.0](https://github.com/yizhengarcanelec/codex-usage-widget/raw/main/download/Codex-Usage-Widget-v0.3.0-win-portable.zip)**
+**[Download Codex Usage Widget v0.4.0](https://github.com/yizhengarcanelec/codex-usage-widget/raw/main/download/Codex-Usage-Widget-v0.4.0-win-portable.zip)**
 
 下载 ZIP 后解压，双击 `GPTUsageWidget.exe` 即可。无需安装，也不需要 API Key。
 
-SHA-256：`497AA591EE0330FF299CFAD85A35AABDEBFE0BA9DA5166EF43A3B79F0001256F`
+SHA-256：`5EFE249CEB663587FE5F00F366032C0E25B9A70F26BC2CC87825E6A8086F86DF`
 
 ## 使用
 
@@ -23,8 +23,11 @@ SHA-256：`497AA591EE0330FF299CFAD85A35AABDEBFE0BA9DA5166EF43A3B79F0001256F`
 
 - 每 5 秒自动刷新。
 - 拖动窗口空白区域可移动。
-- 拖动任意边缘或四个角可缩放；最小为 144×144 的圆形额度球，完整面板最大为 480×360。
-- 尺寸低于完整面板阈值时只显示周额度百分比；双击窗口可在圆球与标准面板之间快速切换。
+- 拖动任意边缘或四个角可分别调整宽、高；完整面板大小固定为 360×286（系统缩放前的逻辑尺寸）。
+- 缩小时会依次隐藏次要模块，最小矩形只显示今日 Token；宽、高均到达矩形下限后继续向内拖动才会变为圆形额度球。
+- 圆球大小可在 84×84 到 132×132 之间等比例缩放；悬停时进度环轻微提亮并显示额度重置日期。
+- 双击窗口或使用右键菜单，可在圆球与标准面板之间快速切换。
+- 支持 CN/EN 中英文切换和五套配色主题，并会保存选择。
 - 右键窗口可立即刷新、切换置顶、切换尺寸或退出。
 - 点击 `PIN` 切换置顶，点击 `X` 关闭。
 - 重复启动不会产生多个窗口。
