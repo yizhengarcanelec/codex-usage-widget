@@ -7,7 +7,16 @@
 - 周额度剩余与已用比例
 - 周额度重置时间
 
-![GPT Usage Widget](docs/screenshot.png)
+<table>
+  <tr>
+    <th>完整面板</th>
+    <th>圆形额度球</th>
+  </tr>
+  <tr>
+    <td><img src="docs/screenshot.png" alt="Codex Usage Widget 完整面板" width="354"></td>
+    <td align="center"><img src="docs/compact-mode.png" alt="Codex Usage Widget 圆形额度球" width="126"></td>
+  </tr>
+</table>
 
 ## Download for Windows
 
