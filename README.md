@@ -10,7 +10,7 @@
 <table>
   <tr>
     <th>完整面板</th>
-    <th>圆形额度球</th>
+    <th>圆形额度球(界面缩小后)</th>
   </tr>
   <tr>
     <td><img src="docs/screenshot.png" alt="Codex Usage Widget 完整面板" width="354"></td>
