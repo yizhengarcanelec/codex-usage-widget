@@ -279,6 +279,42 @@ internal sealed class LanguageToggle : Control
     }
 }
 
+internal enum CloseBehavior
+{
+    Ask,
+    Minimize,
+    Exit
+}
+
+internal sealed class CloseChoiceDialog : Form
+{
+    public CloseBehavior SelectedBehavior { get; private set; }
+
+    public CloseChoiceDialog()
+    {
+        Text = "关闭方式";
+        ClientSize = new Size(390, 142);
+        FormBorderStyle = FormBorderStyle.FixedDialog;
+        MaximizeBox = false;
+        MinimizeBox = false;
+        ShowInTaskbar = false;
+        StartPosition = FormStartPosition.CenterParent;
+        Font = new Font("Segoe UI", 9F);
+        BackColor = Color.FromArgb(16, 20, 28);
+        ForeColor = Color.FromArgb(246, 248, 252);
+
+        var title = new Label { Text = "点击右上角 × 时，你希望如何处理程序？", Location = new Point(18, 16), Size = new Size(350, 24), ForeColor = ForeColor };
+        var hint = new Label { Text = "选择后会记住，也可从右键菜单修改。", Location = new Point(18, 43), Size = new Size(350, 20), ForeColor = Color.FromArgb(150, 163, 184) };
+        var minimize = new Button { Text = "最小化至后台", Location = new Point(18, 86), Size = new Size(122, 30), DialogResult = DialogResult.OK };
+        var exit = new Button { Text = "彻底结束程序", Location = new Point(148, 86), Size = new Size(122, 30), DialogResult = DialogResult.OK };
+        var cancel = new Button { Text = "取消", Location = new Point(278, 86), Size = new Size(78, 30), DialogResult = DialogResult.Cancel };
+        minimize.Click += delegate { SelectedBehavior = CloseBehavior.Minimize; };
+        exit.Click += delegate { SelectedBehavior = CloseBehavior.Exit; };
+        Controls.Add(title); Controls.Add(hint); Controls.Add(minimize); Controls.Add(exit); Controls.Add(cancel);
+        CancelButton = cancel;
+    }
+}
+
 internal sealed class WidgetForm : Form
 {
     private readonly Label brandDot;
@@ -304,6 +340,8 @@ internal sealed class WidgetForm : Form
     private readonly Button expandButton;
     private readonly LanguageToggle languageToggle;
     private readonly ContextMenuStrip contextMenu;
+    private readonly NotifyIcon trayIcon;
+    private readonly ContextMenuStrip trayMenu;
     private readonly List<ToolStripMenuItem> themeMenuItems = new List<ToolStripMenuItem>();
     private ToolStripMenuItem chineseMenuItem;
     private ToolStripMenuItem englishMenuItem;
@@ -325,6 +363,9 @@ internal sealed class WidgetForm : Form
     private Color compactAccent = Color.FromArgb(74, 222, 128);
     private bool compactHovered;
     private bool compactCollapseRequested;
+    private bool exiting;
+    private bool handlingCloseRequest;
+    private CloseBehavior closeBehavior;
     private WidgetTheme renderedTheme;
     private WidgetTheme themeFrom;
     private WidgetTheme themeTo;
@@ -388,7 +429,7 @@ internal sealed class WidgetForm : Form
         TopMost = true;
         ShowInTaskbar = true;
         StartPosition = FormStartPosition.Manual;
-        Icon = SystemIcons.Application;
+        Icon = LoadApplicationIcon();
         DoubleBuffered = true;
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         UpdateStyles();
@@ -410,7 +451,9 @@ internal sealed class WidgetForm : Form
         Controls.Add(pinButton);
         Controls.Add(closeButton);
         pinButton.Click += delegate { TopMost = !TopMost; UpdatePinButton(); };
-        closeButton.Click += delegate { Close(); };
+        closeButton.Click += delegate { HandleCloseRequest(); };
+        toolTip = new ToolTip();
+        toolTip.SetToolTip(closeButton, "关闭行为");
 
         languageToggle = new LanguageToggle { Location = new Point(188, 13), Anchor = AnchorStyles.Top | AnchorStyles.Right, Chinese = chinese };
         languageToggle.ValueChanged += delegate { SetLanguage(languageToggle.Chinese); };
@@ -475,25 +518,24 @@ internal sealed class WidgetForm : Form
         expandButton.Click += delegate { SetCompactMode(false); };
         Controls.Add(expandButton);
 
-        toolTip = new ToolTip();
         toolTip.SetToolTip(expandButton, "Back to full panel");
         MouseDown += DragWindow;
         DoubleClick += ToggleSizeMode;
         foreach (Control control in Controls) if (!(control is Button) && control != languageToggle) control.MouseDown += DragWindow;
 
         contextMenu = new ContextMenuStrip();
-        contextMenu.Items.Add("Expand / compact", null, delegate { ToggleSizeMode(this, EventArgs.Empty); });
-        contextMenu.Items.Add("Refresh now", null, delegate { RefreshSnapshot(); });
-        contextMenu.Items.Add("Toggle always on top", null, delegate { pinButton.PerformClick(); });
+        contextMenu.Items.Add("展开 / 紧凑", null, delegate { ToggleSizeMode(this, EventArgs.Empty); });
+        contextMenu.Items.Add("立即刷新", null, delegate { RefreshSnapshot(); });
+        contextMenu.Items.Add("始终置顶", null, delegate { pinButton.PerformClick(); });
 
-        var languageMenu = new ToolStripMenuItem("Language / 语言");
+        var languageMenu = new ToolStripMenuItem("语言 / Language");
         chineseMenuItem = new ToolStripMenuItem("中文", null, delegate { SetLanguage(true); });
         englishMenuItem = new ToolStripMenuItem("English", null, delegate { SetLanguage(false); });
         languageMenu.DropDownItems.Add(chineseMenuItem);
         languageMenu.DropDownItems.Add(englishMenuItem);
         contextMenu.Items.Add(languageMenu);
 
-        var themeMenu = new ToolStripMenuItem("Theme / 主题");
+        var themeMenu = new ToolStripMenuItem("主题 / Theme");
         for (int i = 0; i < Themes.Length; i++)
         {
             int selectedTheme = i;
@@ -503,8 +545,18 @@ internal sealed class WidgetForm : Form
         }
         contextMenu.Items.Add(themeMenu);
         contextMenu.Items.Add(new ToolStripSeparator());
-        contextMenu.Items.Add("Close", null, delegate { Close(); });
+        contextMenu.Items.Add("最小化至后台", null, delegate { MinimizeToBackground(); });
+        contextMenu.Items.Add("彻底结束程序", null, delegate { ExitApplication(); });
+        contextMenu.Items.Add(BuildCloseBehaviorMenu());
         ContextMenuStrip = contextMenu;
+
+        trayMenu = new ContextMenuStrip();
+        trayMenu.Items.Add("显示窗口", null, delegate { RestoreFromTray(); });
+        trayMenu.Items.Add("彻底结束程序", null, delegate { ExitApplication(); });
+        trayMenu.Items.Add(new ToolStripSeparator());
+        trayMenu.Items.Add(BuildCloseBehaviorMenu());
+        trayIcon = new NotifyIcon { Icon = Icon, Text = "Codex Usage Widget", Visible = false, ContextMenuStrip = trayMenu };
+        trayIcon.DoubleClick += delegate { RestoreFromTray(); };
 
         refreshTimer = new System.Windows.Forms.Timer { Interval = 5000 };
         refreshTimer.Tick += delegate { RefreshSnapshot(); };
@@ -547,6 +599,17 @@ internal sealed class WidgetForm : Form
         button.FlatAppearance.BorderColor = Color.FromArgb(48, 57, 73);
         button.FlatAppearance.MouseOverBackColor = Color.FromArgb(37, 45, 59);
         return button;
+    }
+
+    private static Icon LoadApplicationIcon()
+    {
+        try
+        {
+            Icon icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+            if (icon != null) return icon;
+        }
+        catch { }
+        return SystemIcons.Application;
     }
 
     private void SetTheme(int index)
@@ -602,6 +665,7 @@ internal sealed class WidgetForm : Form
     {
         chinese = String.Equals(CultureInfo.CurrentUICulture.TwoLetterISOLanguageName, "zh", StringComparison.OrdinalIgnoreCase);
         themeIndex = 0;
+        closeBehavior = CloseBehavior.Ask;
         try
         {
             string path = PreferencePath();
@@ -618,6 +682,12 @@ internal sealed class WidgetForm : Form
                     if (Int32.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out parsed))
                         themeIndex = Math.Max(0, Math.Min(Themes.Length - 1, parsed));
                 }
+                else if (String.Equals(parts[0], "close_behavior", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (String.Equals(parts[1], "minimize", StringComparison.OrdinalIgnoreCase)) closeBehavior = CloseBehavior.Minimize;
+                    else if (String.Equals(parts[1], "exit", StringComparison.OrdinalIgnoreCase)) closeBehavior = CloseBehavior.Exit;
+                    else closeBehavior = CloseBehavior.Ask;
+                }
             }
         }
         catch { }
@@ -632,7 +702,8 @@ internal sealed class WidgetForm : Form
             File.WriteAllLines(path, new[]
             {
                 "language=" + (chinese ? "CN" : "EN"),
-                "theme=" + themeIndex.ToString(CultureInfo.InvariantCulture)
+                "theme=" + themeIndex.ToString(CultureInfo.InvariantCulture),
+                "close_behavior=" + CloseBehaviorValue(closeBehavior)
             });
         }
         catch { }
@@ -641,6 +712,11 @@ internal sealed class WidgetForm : Form
     private static string PreferencePath()
     {
         return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "CodexUsageWidget", "settings.ini");
+    }
+
+    private static string CloseBehaviorValue(CloseBehavior behavior)
+    {
+        return behavior == CloseBehavior.Minimize ? "minimize" : behavior == CloseBehavior.Exit ? "exit" : "ask";
     }
 
     private void ApplyTheme()
@@ -684,6 +760,9 @@ internal sealed class WidgetForm : Form
         contextMenu.BackColor = Theme.Card;
         contextMenu.ForeColor = Theme.Text;
         ApplyMenuTheme(contextMenu.Items);
+        trayMenu.BackColor = Theme.Card;
+        trayMenu.ForeColor = Theme.Text;
+        ApplyMenuTheme(trayMenu.Items);
         for (int i = 0; i < themeMenuItems.Count; i++) themeMenuItems[i].Checked = i == themeIndex;
         toolTip.SetToolTip(themeButton, "Theme: " + Theme.Name);
         UpdatePinButton();
@@ -755,6 +834,120 @@ internal sealed class WidgetForm : Form
     private void ToggleSizeMode(object sender, EventArgs e)
     {
         SetCompactMode(!compactMode);
+    }
+
+    private void MinimizeToBackground()
+    {
+        if (IsDisposed) return;
+        WindowState = FormWindowState.Minimized;
+        ShowInTaskbar = false;
+        trayIcon.Visible = true;
+        Hide();
+    }
+
+    private void RestoreFromTray()
+    {
+        if (IsDisposed) return;
+        trayIcon.Visible = false;
+        ShowInTaskbar = true;
+        Show();
+        WindowState = FormWindowState.Normal;
+        Activate();
+        BringToFront();
+    }
+
+    private void HandleCloseRequest()
+    {
+        if (IsDisposed) return;
+        if (closeBehavior == CloseBehavior.Minimize)
+        {
+            MinimizeToBackground();
+            return;
+        }
+        if (closeBehavior == CloseBehavior.Exit)
+        {
+            ExitApplication();
+            return;
+        }
+
+        using (var dialog = new CloseChoiceDialog())
+        {
+            DialogResult result = dialog.ShowDialog(this);
+            if (result != DialogResult.OK) return;
+            SetCloseBehavior(dialog.SelectedBehavior);
+            if (closeBehavior == CloseBehavior.Minimize) MinimizeToBackground();
+            else if (closeBehavior == CloseBehavior.Exit) ExitApplication();
+        }
+    }
+
+    private void SetCloseBehavior(CloseBehavior behavior)
+    {
+        closeBehavior = behavior;
+        SavePreferences();
+        UpdateCloseBehaviorMenus();
+    }
+
+    private ToolStripMenuItem BuildCloseBehaviorMenu()
+    {
+        var menu = new ToolStripMenuItem("关闭行为");
+        menu.DropDownItems.Add("点击 × 时询问", null, delegate { SetCloseBehavior(CloseBehavior.Ask); });
+        menu.DropDownItems.Add("点击 × 后最小化至后台", null, delegate { SetCloseBehavior(CloseBehavior.Minimize); });
+        menu.DropDownItems.Add("点击 × 后彻底结束程序", null, delegate { SetCloseBehavior(CloseBehavior.Exit); });
+        menu.DropDownOpening += delegate { UpdateCloseBehaviorMenu(menu); };
+        return menu;
+    }
+
+    private void UpdateCloseBehaviorMenu(ToolStripMenuItem menu)
+    {
+        if (menu == null || menu.DropDownItems.Count < 3) return;
+        ((ToolStripMenuItem)menu.DropDownItems[0]).Checked = closeBehavior == CloseBehavior.Ask;
+        ((ToolStripMenuItem)menu.DropDownItems[1]).Checked = closeBehavior == CloseBehavior.Minimize;
+        ((ToolStripMenuItem)menu.DropDownItems[2]).Checked = closeBehavior == CloseBehavior.Exit;
+    }
+
+    private void UpdateCloseBehaviorMenus()
+    {
+        foreach (ToolStripItem item in contextMenu.Items)
+        {
+            var menu = item as ToolStripMenuItem;
+            if (menu != null && menu.Text == "关闭行为") UpdateCloseBehaviorMenu(menu);
+        }
+        foreach (ToolStripItem item in trayMenu.Items)
+        {
+            var menu = item as ToolStripMenuItem;
+            if (menu != null && menu.Text == "关闭行为") UpdateCloseBehaviorMenu(menu);
+        }
+    }
+
+    private void ExitApplication()
+    {
+        if (IsDisposed) return;
+        exiting = true;
+        trayIcon.Visible = false;
+        Close();
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        if (!exiting && !handlingCloseRequest && e.CloseReason != CloseReason.WindowsShutDown && e.CloseReason != CloseReason.TaskManagerClosing)
+        {
+            e.Cancel = true;
+            handlingCloseRequest = true;
+            try { HandleCloseRequest(); }
+            finally { handlingCloseRequest = false; }
+            return;
+        }
+        base.OnFormClosing(e);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && trayIcon != null)
+        {
+            trayIcon.Visible = false;
+            trayIcon.Dispose();
+        }
+        base.Dispose(disposing);
     }
 
     private void SetCompactMode(bool compact)
