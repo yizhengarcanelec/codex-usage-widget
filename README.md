@@ -1,16 +1,18 @@
 # Codex Usage Widget
 
-一个轻量、无边框的 Windows 桌面小组件，用于实时查看本机 Codex 的今日 Token，以及 5 小时和周额度。窗口支持分级响应式布局：完整面板、窄面板、仅今日 Token 面板，以及最小圆形额度球。
+一个轻量、无边框的 Windows 桌面小组件，用于实时查看本机 Codex 的今日 Token、5 小时额度和周额度。所有数据只从本机 Codex 会话记录读取，不需要 API Key，也不会上传会话内容。
 
 - 今日 Token 总量
 - Input / Output / Cached Token 明细
-- 5 小时额度与周额度的剩余、已用比例
-- 两种额度各自的重置时间
+- 5 小时额度与周额度的剩余比例、已用比例和独立重置时间
+- 完整面板、窄面板、仅今日 Token 面板和双环圆形额度球
+- CN/EN 中英文切换、五套配色主题和窗口置顶
+- 系统托盘后台运行，并记住用户选择的关闭行为
 
 <table>
   <tr>
     <th>完整面板</th>
-    <th>圆形额度球(界面缩小后)</th>
+    <th>圆形额度球（界面缩小后）</th>
   </tr>
   <tr>
     <td><img src="docs/screenshot.png" alt="Codex Usage Widget 双额度完整面板" width="354"></td>
@@ -20,15 +22,22 @@
 
 ## Download for Windows
 
-**[Download Codex Usage Widget v0.4.0](https://github.com/yizhengarcanelec/codex-usage-widget/raw/main/download/Codex-Usage-Widget-v0.4.0-win-portable.zip)**
+**[Download Codex Usage Widget v0.5.0](https://github.com/yizhengarcanelec/codex-usage-widget/raw/main/download/Codex-Usage-Widget-v0.5.0-win-portable.zip)**
 
-下载 ZIP 后解压，双击 `GPTUsageWidget.exe` 即可。无需安装，也不需要 API Key。
+下载 ZIP 后解压，双击 `GPTUsageWidget.exe` 即可。便携包内含程序和使用说明，无需安装。
 
-SHA-256：`5EFE249CEB663587FE5F00F366032C0E25B9A70F26BC2CC87825E6A8086F86DF`
+SHA-256：`8E86783A921E8DDDFA3222CA4C365C4EE9B2C232794AEB1693A6AC982ACE53F3`
 
-## 使用
+## v0.5.0 更新
 
-从 GitHub Actions 的构建产物或 Releases 下载便携包，解压后双击 `GPTUsageWidget.exe`。
+- 同时识别 Codex 的 5 小时额度窗口和周额度窗口，分别显示剩余、已用和重置时间。
+- 圆形模式升级为双环显示：内环为 5 小时额度，外环为周额度。
+- 圆形中心显示两种额度中较低的剩余比例，便于快速判断当前更紧张的额度。
+- 旧日志暂时缺少某一种额度记录时，对应位置显示 `--%`，不会使用 Token 数量推算额度。
+
+## 功能与操作
+
+从上方链接、GitHub Actions 构建产物或 Releases 下载便携包，解压后双击 `GPTUsageWidget.exe`。
 
 - 每 5 秒自动刷新。
 - 拖动窗口空白区域可移动。
@@ -45,6 +54,13 @@ SHA-256：`5EFE249CEB663587FE5F00F366032C0E25B9A70F26BC2CC87825E6A8086F86DF`
 
 也可以使用 `GPTUsageWidget.exe --compact` 直接以圆形额度球启动。
 
+## 额度显示说明
+
+- 完整面板中的“5 小时剩余”和“本周剩余”是两个彼此独立的额度窗口。
+- 圆形额度球的内环代表 5 小时额度，外环代表周额度；中心数字取两者中较低的剩余比例。
+- 鼠标悬停圆球后，会显示两个额度窗口各自的重置日期。
+- 额度百分比来自 Codex 写入本地会话记录的限额数据，不代表可换算成固定 Token 数量的余额。
+
 ## 数据与隐私
 
 程序只读取当前用户目录下的 Codex 本地会话记录：
@@ -54,7 +70,7 @@ SHA-256：`5EFE249CEB663587FE5F00F366032C0E25B9A70F26BC2CC87825E6A8086F86DF`
 
 程序不需要 API Key，不联网，也不会上传会话内容。今日 Token 按本地日历日汇总；如果本机缺少当天较早的记录，状态栏会显示 `partial history`。
 
-5 小时额度与周额度来自 Codex 写入本地会话事件的两个独立限额窗口。程序不会用今日 Token 数量反推额度；旧日志只有一种窗口时，另一项会显示 `--%`。
+程序不会使用今日 Token 数量反推额度。如果本机缺少某个额度窗口的最新记录，对应位置会显示 `--%`。
 
 ## 兼容性
 
