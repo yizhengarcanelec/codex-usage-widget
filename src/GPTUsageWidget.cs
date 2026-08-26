@@ -13,10 +13,21 @@ using System.Web.Script.Serialization;
 using System.Windows.Forms;
 
 [assembly: AssemblyTitle("Codex Usage Widget")]
-[assembly: AssemblyDescription("A local Codex token and weekly quota widget for Windows")]
+[assembly: AssemblyDescription("A local Codex token and dual quota widget for Windows")]
 [assembly: AssemblyProduct("Codex Usage Widget")]
-[assembly: AssemblyVersion("0.4.0.0")]
-[assembly: AssemblyFileVersion("0.4.0.0")]
+[assembly: AssemblyVersion("0.5.0.0")]
+[assembly: AssemblyFileVersion("0.5.0.0")]
+
+internal sealed class QuotaWindowSnapshot
+{
+    public bool Available;
+    public double UsedPercent;
+    public double RemainingPercent;
+    public DateTimeOffset ResetAt;
+    public bool HasReset;
+    public long WindowMinutes;
+    public DateTimeOffset SampledAt;
+}
 
 internal sealed class UsageSnapshot
 {
@@ -26,10 +37,8 @@ internal sealed class UsageSnapshot
     public long Reasoning;
     public long Total;
     public bool Partial;
-    public bool HasWeekly;
-    public double UsedPercent;
-    public double RemainingPercent;
-    public DateTimeOffset ResetAt;
+    public readonly QuotaWindowSnapshot FiveHour = new QuotaWindowSnapshot();
+    public readonly QuotaWindowSnapshot Weekly = new QuotaWindowSnapshot();
     public string Plan;
     public DateTimeOffset GeneratedAt;
 }
@@ -74,7 +83,9 @@ internal static class UsageReader
         DateTime today = DateTime.Today;
         DateTime tomorrow = today.AddDays(1);
         DateTimeOffset? earliest = null;
+        DateTimeOffset? latestFiveHourStamp = null;
         DateTimeOffset? latestWeeklyStamp = null;
+        IDictionary<string, object> latestFiveHour = null;
         IDictionary<string, object> latestWeekly = null;
         string latestPlan = "";
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -139,22 +150,24 @@ internal static class UsageReader
                             if (payload.TryGetValue("rate_limits", out rateObj)) rate = Dict(rateObj);
                             if (rate == null) continue;
 
-                            IDictionary<string, object> selectedWindow = null;
                             foreach (string key in new[] { "primary", "secondary" })
                             {
                                 object windowObj;
                                 IDictionary<string, object> candidate;
                                 if (!rate.TryGetValue(key, out windowObj) || (candidate = Dict(windowObj)) == null) continue;
-                                if (LongValue(candidate, "window_minutes") < 10000) continue;
-                                if (selectedWindow == null || LongValue(candidate, "window_minutes") > LongValue(selectedWindow, "window_minutes"))
-                                    selectedWindow = candidate;
-                            }
-
-                            if (selectedWindow != null && (!latestWeeklyStamp.HasValue || stamp > latestWeeklyStamp.Value))
-                            {
-                                latestWeeklyStamp = stamp;
-                                latestWeekly = selectedWindow;
-                                latestPlan = StringValue(rate, "plan_type");
+                                long minutes = LongValue(candidate, "window_minutes");
+                                if (minutes >= 240 && minutes <= 360 && (!latestFiveHourStamp.HasValue || stamp > latestFiveHourStamp.Value))
+                                {
+                                    latestFiveHourStamp = stamp;
+                                    latestFiveHour = candidate;
+                                    latestPlan = StringValue(rate, "plan_type");
+                                }
+                                else if (minutes >= 9000 && (!latestWeeklyStamp.HasValue || stamp > latestWeeklyStamp.Value))
+                                {
+                                    latestWeeklyStamp = stamp;
+                                    latestWeekly = candidate;
+                                    latestPlan = StringValue(rate, "plan_type");
+                                }
                             }
                         }
                     }
@@ -164,16 +177,29 @@ internal static class UsageReader
         }
 
         result.Partial = earliest.HasValue && earliest.Value.LocalDateTime > today.AddMinutes(5);
-        if (latestWeekly != null)
-        {
-            result.HasWeekly = true;
-            result.UsedPercent = Math.Round(DoubleValue(latestWeekly, "used_percent"), 1);
-            result.RemainingPercent = Math.Round(Math.Max(0, 100 - result.UsedPercent), 1);
-            long seconds = LongValue(latestWeekly, "resets_at");
-            result.ResetAt = new DateTimeOffset(1970, 1, 1, 0, 0, 0, TimeSpan.Zero).AddSeconds(seconds).ToLocalTime();
-            result.Plan = latestPlan;
-        }
+        PopulateQuota(result.FiveHour, latestFiveHour, latestFiveHourStamp);
+        PopulateQuota(result.Weekly, latestWeekly, latestWeeklyStamp);
+        result.Plan = latestPlan;
         return result;
+    }
+
+    private static void PopulateQuota(QuotaWindowSnapshot target, IDictionary<string, object> source, DateTimeOffset? sampledAt)
+    {
+        if (source == null) return;
+        target.Available = true;
+        target.WindowMinutes = LongValue(source, "window_minutes");
+        target.UsedPercent = Math.Round(Math.Max(0, Math.Min(100, DoubleValue(source, "used_percent"))), 1);
+        target.RemainingPercent = Math.Round(Math.Max(0, 100 - target.UsedPercent), 1);
+        target.SampledAt = sampledAt ?? DateTimeOffset.MinValue;
+        long stamp = LongValue(source, "resets_at");
+        if (stamp <= 0) return;
+        if (stamp > 100000000000L) stamp /= 1000;
+        try
+        {
+            target.ResetAt = new DateTimeOffset(1970, 1, 1, 0, 0, 0, TimeSpan.Zero).AddSeconds(stamp).ToLocalTime();
+            target.HasReset = true;
+        }
+        catch { }
     }
 }
 
@@ -321,17 +347,23 @@ internal sealed class WidgetForm : Form
     private readonly Label titleLabel;
     private readonly Label todayTitle;
     private readonly Label breakdownTitle;
+    private readonly Label fiveHourTitle;
     private readonly Label weeklyTitle;
     private readonly Label todayValue;
     private readonly Label inputValue;
     private readonly Label outputValue;
     private readonly Label cacheValue;
+    private readonly Label fiveHourValue;
     private readonly Label weeklyValue;
+    private readonly Label fiveHourDetail;
     private readonly Label weeklyDetail;
+    private readonly Label fiveHourResetValue;
     private readonly Label resetValue;
     private readonly Label statusValue;
     private readonly Label localOnly;
     private readonly Panel weeklyCard;
+    private readonly Panel fiveHourProgressFill;
+    private readonly Panel fiveHourProgressTrack;
     private readonly Panel progressFill;
     private readonly Panel progressTrack;
     private readonly Button pinButton;
@@ -353,9 +385,12 @@ internal sealed class WidgetForm : Form
     private readonly List<Control> detailControls = new List<Control>();
     private bool refreshing;
     private double lastRemainingPercent;
+    private double lastFiveHourRemainingPercent;
+    private double lastWeeklyRemainingPercent;
     private bool compactMode;
     private bool changingMode;
     private bool chinese;
+    private bool lastHasFiveHour;
     private bool lastHasWeekly;
     private int themeIndex;
     private string compactText = "--%";
@@ -482,19 +517,36 @@ internal sealed class WidgetForm : Form
         weeklyCard.Paint += delegate(object s, PaintEventArgs e) { using (var p = new Pen(Theme.Border)) e.Graphics.DrawRectangle(p, 0, 0, weeklyCard.Width - 1, weeklyCard.Height - 1); };
         weeklyCard.Resize += delegate { weeklyCard.Invalidate(); };
         Controls.Add(weeklyCard);
-        weeklyTitle = MakeLabel("WEEKLY LEFT", 13, 12, 130, 18, 8.5F, Theme.Muted, FontStyle.Bold);
+        fiveHourTitle = MakeLabel("5-HOUR LEFT", 13, 6, 130, 16, 7.8F, Theme.Muted, FontStyle.Bold);
+        fiveHourValue = MakeLabel("--%", 222, 3, 90, 23, 14F, Theme.Accent, FontStyle.Bold);
+        fiveHourValue.TextAlign = ContentAlignment.MiddleRight;
+        fiveHourValue.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        weeklyCard.Controls.Add(fiveHourTitle);
+        weeklyCard.Controls.Add(fiveHourValue);
+
+        fiveHourProgressTrack = new Panel { Location = new Point(13, 27), Size = new Size(302, 6), BackColor = Theme.Track, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+        fiveHourProgressFill = new Panel { Location = new Point(0, 0), Size = new Size(0, 6), BackColor = Theme.Accent };
+        fiveHourProgressTrack.Controls.Add(fiveHourProgressFill);
+        weeklyCard.Controls.Add(fiveHourProgressTrack);
+        fiveHourDetail = MakeLabel("Waiting for local data", 13, 35, 170, 15, 7.5F, Theme.SoftText, FontStyle.Regular);
+        fiveHourResetValue = MakeLabel("", 189, 35, 126, 15, 7.5F, Theme.DimText, FontStyle.Regular);
+        fiveHourResetValue.TextAlign = ContentAlignment.MiddleRight;
+        fiveHourResetValue.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        weeklyCard.Controls.Add(fiveHourDetail); weeklyCard.Controls.Add(fiveHourResetValue);
+
+        weeklyTitle = MakeLabel("WEEKLY LEFT", 13, 56, 130, 16, 7.8F, Theme.Muted, FontStyle.Bold);
         weeklyCard.Controls.Add(weeklyTitle);
-        weeklyValue = MakeLabel("--%", 222, 8, 90, 27, 17F, Theme.Accent, FontStyle.Bold);
+        weeklyValue = MakeLabel("--%", 222, 53, 90, 23, 14F, Theme.Accent, FontStyle.Bold);
         weeklyValue.TextAlign = ContentAlignment.MiddleRight;
         weeklyValue.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         weeklyCard.Controls.Add(weeklyValue);
 
-        progressTrack = new Panel { Location = new Point(13, 43), Size = new Size(302, 7), BackColor = Theme.Track, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
-        progressFill = new Panel { Location = new Point(0, 0), Size = new Size(0, 7), BackColor = Theme.Accent };
+        progressTrack = new Panel { Location = new Point(13, 77), Size = new Size(302, 6), BackColor = Theme.Track, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
+        progressFill = new Panel { Location = new Point(0, 0), Size = new Size(0, 6), BackColor = Theme.Accent };
         progressTrack.Controls.Add(progressFill);
         weeklyCard.Controls.Add(progressTrack);
-        weeklyDetail = MakeLabel("Waiting for local data", 13, 62, 170, 18, 8.5F, Theme.SoftText, FontStyle.Regular);
-        resetValue = MakeLabel("", 189, 62, 126, 18, 8.5F, Theme.DimText, FontStyle.Regular);
+        weeklyDetail = MakeLabel("Waiting for local data", 13, 85, 170, 15, 7.5F, Theme.SoftText, FontStyle.Regular);
+        resetValue = MakeLabel("", 189, 85, 126, 15, 7.5F, Theme.DimText, FontStyle.Regular);
         resetValue.TextAlign = ContentAlignment.MiddleRight;
         resetValue.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         weeklyCard.Controls.Add(weeklyDetail); weeklyCard.Controls.Add(resetValue);
@@ -727,16 +779,20 @@ internal sealed class WidgetForm : Form
         titleLabel.ForeColor = Theme.Text;
         todayTitle.ForeColor = Theme.Muted;
         breakdownTitle.ForeColor = Theme.Muted;
+        fiveHourTitle.ForeColor = Theme.Muted;
         weeklyTitle.ForeColor = Theme.Muted;
         todayValue.ForeColor = Theme.Text;
         inputValue.ForeColor = Theme.SoftText;
         outputValue.ForeColor = Theme.SoftText;
         cacheValue.ForeColor = Theme.DimText;
+        fiveHourDetail.ForeColor = Theme.SoftText;
         weeklyDetail.ForeColor = Theme.SoftText;
+        fiveHourResetValue.ForeColor = Theme.DimText;
         resetValue.ForeColor = Theme.DimText;
         statusValue.ForeColor = Theme.DimText;
         localOnly.ForeColor = Theme.DimText;
         weeklyCard.BackColor = Theme.Card;
+        fiveHourProgressTrack.BackColor = Theme.Track;
         progressTrack.BackColor = Theme.Track;
 
         ApplyButtonTheme(pinButton);
@@ -754,8 +810,12 @@ internal sealed class WidgetForm : Form
 
         Color usageAccent = GetUsageAccent();
         compactAccent = usageAccent;
-        progressFill.BackColor = usageAccent;
-        weeklyValue.ForeColor = usageAccent;
+        Color fiveHourAccent = GetQuotaAccent(lastHasFiveHour, lastFiveHourRemainingPercent);
+        Color weeklyAccent = GetQuotaAccent(lastHasWeekly, lastWeeklyRemainingPercent);
+        fiveHourProgressFill.BackColor = fiveHourAccent;
+        fiveHourValue.ForeColor = fiveHourAccent;
+        progressFill.BackColor = weeklyAccent;
+        weeklyValue.ForeColor = weeklyAccent;
 
         contextMenu.BackColor = Theme.Card;
         contextMenu.ForeColor = Theme.Text;
@@ -800,9 +860,14 @@ internal sealed class WidgetForm : Form
 
     private Color GetUsageAccent()
     {
-        if (!lastHasWeekly) return Theme.Muted;
-        if (lastRemainingPercent > 50) return Theme.Accent;
-        if (lastRemainingPercent > 20) return Color.FromArgb(251, 191, 36);
+        return GetQuotaAccent(lastHasFiveHour || lastHasWeekly, lastRemainingPercent);
+    }
+
+    private Color GetQuotaAccent(bool available, double remainingPercent)
+    {
+        if (!available) return Theme.Muted;
+        if (remainingPercent > 50) return Theme.Accent;
+        if (remainingPercent > 20) return Color.FromArgb(251, 191, 36);
         return Color.FromArgb(251, 113, 133);
     }
 
@@ -811,6 +876,7 @@ internal sealed class WidgetForm : Form
         languageToggle.Chinese = chinese;
         todayTitle.Text = chinese ? "今日 TOKEN" : "TOKENS TODAY";
         breakdownTitle.Text = chinese ? "使用明细" : "BREAKDOWN";
+        fiveHourTitle.Text = chinese ? "5小时剩余" : "5-HOUR LEFT";
         weeklyTitle.Text = chinese ? "本周剩余" : "WEEKLY LEFT";
         chineseMenuItem.Checked = chinese;
         englishMenuItem.Checked = !chinese;
@@ -1080,16 +1146,28 @@ internal sealed class WidgetForm : Form
         }
 
         int weeklyWidth = weeklyCard.ClientSize.Width;
-        weeklyTitle.Location = new Point(13, 12);
+        fiveHourTitle.Location = new Point(13, 6);
+        fiveHourTitle.Width = full ? 130 : Math.Max(68, weeklyWidth - 86);
+        fiveHourValue.Location = new Point(Math.Max(76, weeklyWidth - 103), 3);
+        fiveHourValue.Size = new Size(Math.Min(90, Math.Max(58, weeklyWidth - 89)), 23);
+        fiveHourProgressTrack.Location = new Point(13, 27);
+        fiveHourProgressTrack.Size = new Size(Math.Max(1, weeklyWidth - 26), 6);
+        fiveHourDetail.Location = new Point(13, 35);
+        fiveHourDetail.Width = full ? 170 : Math.Max(1, weeklyWidth - 26);
+        fiveHourResetValue.Visible = full && showWeekly;
+        fiveHourResetValue.Location = new Point(Math.Max(13, weeklyWidth - 139), 35);
+        fiveHourResetValue.Width = 126;
+
+        weeklyTitle.Location = new Point(13, 56);
         weeklyTitle.Width = full ? 130 : Math.Max(68, weeklyWidth - 86);
-        weeklyValue.Location = new Point(Math.Max(76, weeklyWidth - 103), 8);
-        weeklyValue.Size = new Size(Math.Min(90, Math.Max(58, weeklyWidth - 89)), 27);
-        progressTrack.Location = new Point(13, 43);
-        progressTrack.Size = new Size(Math.Max(1, weeklyWidth - 26), 7);
-        weeklyDetail.Location = new Point(13, 62);
+        weeklyValue.Location = new Point(Math.Max(76, weeklyWidth - 103), 53);
+        weeklyValue.Size = new Size(Math.Min(90, Math.Max(58, weeklyWidth - 89)), 23);
+        progressTrack.Location = new Point(13, 77);
+        progressTrack.Size = new Size(Math.Max(1, weeklyWidth - 26), 6);
+        weeklyDetail.Location = new Point(13, 85);
         weeklyDetail.Width = full ? 170 : Math.Max(1, weeklyWidth - 26);
         resetValue.Visible = full && showWeekly;
-        resetValue.Location = new Point(Math.Max(13, weeklyWidth - 139), 62);
+        resetValue.Location = new Point(Math.Max(13, weeklyWidth - 139), 85);
         resetValue.Width = 126;
         if (full)
         {
@@ -1097,6 +1175,7 @@ internal sealed class WidgetForm : Form
             themeButton.BringToFront();
             pinButton.BringToFront();
         }
+        fiveHourValue.BringToFront();
         weeklyValue.BringToFront();
     }
 
@@ -1182,34 +1261,37 @@ internal sealed class WidgetForm : Form
             inputValue.Text = "IN   " + Compact(snapshot.Input);
             outputValue.Text = "OUT  " + Compact(snapshot.Output);
             cacheValue.Text = "CACHE " + Compact(snapshot.Cached);
-            lastHasWeekly = snapshot.HasWeekly;
+            lastHasFiveHour = snapshot.FiveHour.Available;
+            lastHasWeekly = snapshot.Weekly.Available;
+            lastFiveHourRemainingPercent = snapshot.FiveHour.RemainingPercent;
+            lastWeeklyRemainingPercent = snapshot.Weekly.RemainingPercent;
 
-            if (snapshot.HasWeekly)
+            string plan = String.IsNullOrEmpty(snapshot.Plan) ? "CODEX" : snapshot.Plan.ToUpperInvariant();
+            ApplyQuotaWindow(snapshot.FiveHour, fiveHourValue, fiveHourDetail, fiveHourResetValue, fiveHourProgressTrack, fiveHourProgressFill, false, plan);
+            ApplyQuotaWindow(snapshot.Weekly, weeklyValue, weeklyDetail, resetValue, progressTrack, progressFill, true, plan);
+
+            if (lastHasFiveHour && lastHasWeekly) lastRemainingPercent = Math.Min(lastFiveHourRemainingPercent, lastWeeklyRemainingPercent);
+            else if (lastHasFiveHour) lastRemainingPercent = lastFiveHourRemainingPercent;
+            else if (lastHasWeekly) lastRemainingPercent = lastWeeklyRemainingPercent;
+            else lastRemainingPercent = 0;
+            compactText = (lastHasFiveHour || lastHasWeekly)
+                ? lastRemainingPercent.ToString("0.#", CultureInfo.InvariantCulture) + "%"
+                : "--%";
+            var compactLines = new List<string>();
+            var compactToolTipLines = new List<string>();
+            if (lastHasFiveHour)
             {
-                weeklyValue.Text = snapshot.RemainingPercent.ToString("0.#", CultureInfo.InvariantCulture) + "%";
-                compactText = weeklyValue.Text;
-                lastRemainingPercent = snapshot.RemainingPercent;
-                string plan = String.IsNullOrEmpty(snapshot.Plan) ? "CODEX" : snapshot.Plan.ToUpperInvariant();
-                weeklyDetail.Text = snapshot.UsedPercent.ToString("0.#", CultureInfo.InvariantCulture) + "% used  |  " + plan;
-                resetValue.Text = "RESET " + snapshot.ResetAt.ToString("MM-dd HH:mm");
-                compactResetText = "RESET " + snapshot.ResetAt.ToString("MM-dd");
-                progressFill.Width = Math.Max(0, Math.Min(progressTrack.Width, (int)Math.Round(progressTrack.Width * snapshot.RemainingPercent / 100.0)));
-                Color accent = GetUsageAccent();
-                progressFill.BackColor = accent;
-                weeklyValue.ForeColor = accent;
-                compactAccent = accent;
+                compactLines.Add("5H " + (snapshot.FiveHour.HasReset ? snapshot.FiveHour.ResetAt.ToString("MM-dd") : "--"));
+                compactToolTipLines.Add("5H " + snapshot.FiveHour.RemainingPercent.ToString("0.#", CultureInfo.InvariantCulture) + "%" + (snapshot.FiveHour.HasReset ? " | RESET " + snapshot.FiveHour.ResetAt.ToString("MM-dd HH:mm") : ""));
             }
-            else
+            if (lastHasWeekly)
             {
-                weeklyValue.Text = "--%";
-                compactText = "--%";
-                compactAccent = Theme.Muted;
-                weeklyDetail.Text = "No weekly sample yet";
-                resetValue.Text = "";
-                compactResetText = "";
-                progressFill.Width = 0;
-                lastRemainingPercent = 0;
+                compactLines.Add("W  " + (snapshot.Weekly.HasReset ? snapshot.Weekly.ResetAt.ToString("MM-dd") : "--"));
+                compactToolTipLines.Add("WEEK " + snapshot.Weekly.RemainingPercent.ToString("0.#", CultureInfo.InvariantCulture) + "%" + (snapshot.Weekly.HasReset ? " | RESET " + snapshot.Weekly.ResetAt.ToString("MM-dd HH:mm") : ""));
             }
+            compactResetText = String.Join("\n", compactLines.ToArray());
+            toolTip.SetToolTip(expandButton, (chinese ? "返回完整面板" : "Back to full panel") + (compactToolTipLines.Count > 0 ? "\n" + String.Join("\n", compactToolTipLines.ToArray()) : ""));
+            compactAccent = GetUsageAccent();
             statusValue.Text = "Updated " + snapshot.GeneratedAt.ToString("HH:mm:ss") + " | every 5s" + (snapshot.Partial ? " | partial history" : "");
             Invalidate();
         }
@@ -1218,6 +1300,29 @@ internal sealed class WidgetForm : Form
             statusValue.Text = "Waiting for Codex session data...";
         }
         finally { refreshing = false; }
+    }
+
+    private void ApplyQuotaWindow(QuotaWindowSnapshot quota, Label value, Label detail, Label reset, Panel track, Panel fill, bool includePlan, string plan)
+    {
+        if (!quota.Available)
+        {
+            value.Text = "--%";
+            detail.Text = chinese ? "暂无额度数据" : "No quota sample yet";
+            reset.Text = "";
+            fill.Width = 0;
+            value.ForeColor = Theme.Muted;
+            fill.BackColor = Theme.Muted;
+            return;
+        }
+
+        value.Text = quota.RemainingPercent.ToString("0.#", CultureInfo.InvariantCulture) + "%";
+        detail.Text = quota.UsedPercent.ToString("0.#", CultureInfo.InvariantCulture) + (chinese ? "% 已用" : "% used") + (includePlan ? "  |  " + plan : "");
+        reset.Text = quota.HasReset ? "RESET " + quota.ResetAt.ToString("MM-dd HH:mm") : "";
+        fill.Width = Math.Max(0, Math.Min(track.Width, (int)Math.Round(track.Width * quota.RemainingPercent / 100.0)));
+        Color accent = GetQuotaAccent(true, quota.RemainingPercent);
+        fill.BackColor = accent;
+        value.ForeColor = accent;
+        toolTip.SetToolTip(value, (chinese ? "剩余 " : "Remaining ") + quota.RemainingPercent.ToString("0.#", CultureInfo.InvariantCulture) + "%" + (quota.HasReset ? " | " + reset.Text : ""));
     }
 
     protected override void WndProc(ref Message m)
@@ -1308,7 +1413,9 @@ internal sealed class WidgetForm : Form
         base.OnResize(e);
         UpdateLayoutMode();
         if (progressTrack != null && progressFill != null)
-            progressFill.Width = Math.Max(0, Math.Min(progressTrack.Width, (int)Math.Round(progressTrack.Width * lastRemainingPercent / 100.0)));
+            progressFill.Width = Math.Max(0, Math.Min(progressTrack.Width, (int)Math.Round(progressTrack.Width * lastWeeklyRemainingPercent / 100.0)));
+        if (fiveHourProgressTrack != null && fiveHourProgressFill != null)
+            fiveHourProgressFill.Width = Math.Max(0, Math.Min(fiveHourProgressTrack.Width, (int)Math.Round(fiveHourProgressTrack.Width * lastFiveHourRemainingPercent / 100.0)));
         Invalidate(true);
         if (IsHandleCreated)
             RedrawWindow(Handle, IntPtr.Zero, IntPtr.Zero, 0x0001 | 0x0004 | 0x0080 | 0x0400);
@@ -1327,23 +1434,28 @@ internal sealed class WidgetForm : Form
         {
             int inset = Math.Max(5, Math.Min(ClientSize.Width, ClientSize.Height) / 14);
             int diameter = Math.Min(ClientSize.Width, ClientSize.Height) - inset * 2;
-            var ringBounds = new Rectangle((ClientSize.Width - diameter) / 2, (ClientSize.Height - diameter) / 2, diameter, diameter);
-            int ringWidth = Math.Max(4, diameter / 18);
-            Color hoverAccent = compactHovered ? Blend(compactAccent, Theme.Text, 0.22F) : compactAccent;
             Color hoverTrack = compactHovered ? Blend(Theme.Track, Theme.Border, 0.45F) : Theme.Track;
-            using (var track = new Pen(hoverTrack, ringWidth))
-                e.Graphics.DrawEllipse(track, ringBounds);
-            Color accent = hoverAccent;
-            using (var progress = new Pen(accent, ringWidth))
+            int ringWidth = Math.Max(3, diameter / 22);
+            var outerBounds = new Rectangle((ClientSize.Width - diameter) / 2, (ClientSize.Height - diameter) / 2, diameter, diameter);
+            int innerInset = ringWidth * 2 + Math.Max(2, diameter / 45);
+            var innerBounds = Rectangle.Inflate(outerBounds, -innerInset, -innerInset);
+
+            if (lastHasWeekly)
+                DrawQuotaRing(e.Graphics, outerBounds, ringWidth, lastWeeklyRemainingPercent, GetQuotaAccent(true, lastWeeklyRemainingPercent), hoverTrack);
+            if (lastHasFiveHour)
             {
-                progress.StartCap = LineCap.Round;
-                progress.EndCap = LineCap.Round;
-                float sweep = (float)Math.Max(0, Math.Min(359.9, 360.0 * lastRemainingPercent / 100.0));
-                if (sweep > 0) e.Graphics.DrawArc(progress, ringBounds, -90, sweep);
+                Rectangle targetBounds = lastHasWeekly ? innerBounds : outerBounds;
+                DrawQuotaRing(e.Graphics, targetBounds, ringWidth, lastFiveHourRemainingPercent, GetQuotaAccent(true, lastFiveHourRemainingPercent), hoverTrack);
             }
-            float fontSize = Math.Max(15F, Math.Min(28F, Math.Min(ClientSize.Width, ClientSize.Height) * 0.23F));
+            if (!lastHasFiveHour && !lastHasWeekly)
+                DrawQuotaRing(e.Graphics, outerBounds, ringWidth, 0, Theme.Muted, hoverTrack);
+
+            Color accent = compactHovered ? Blend(compactAccent, Theme.Text, 0.22F) : compactAccent;
+            float fontSize = compactHovered
+                ? Math.Max(10F, Math.Min(16F, Math.Min(ClientSize.Width, ClientSize.Height) * 0.15F))
+                : Math.Max(14F, Math.Min(26F, Math.Min(ClientSize.Width, ClientSize.Height) * 0.21F));
             RectangleF textBounds = compactHovered
-                ? new RectangleF(0, ClientSize.Height * 0.29F, ClientSize.Width, ClientSize.Height * 0.40F)
+                ? new RectangleF(0, ClientSize.Height * 0.24F, ClientSize.Width, ClientSize.Height * 0.27F)
                 : new RectangleF(0, ClientSize.Height * 0.25F, ClientSize.Width, ClientSize.Height * 0.62F);
             using (var font = new Font("Segoe UI", fontSize, FontStyle.Bold))
             using (var brush = new SolidBrush(accent))
@@ -1351,8 +1463,8 @@ internal sealed class WidgetForm : Form
                 e.Graphics.DrawString(compactText, font, brush, textBounds, format);
             if (compactHovered && !String.IsNullOrEmpty(compactResetText))
             {
-                float resetFontSize = Math.Max(5.5F, Math.Min(7.5F, ClientSize.Width * 0.065F));
-                RectangleF resetBounds = new RectangleF(4, ClientSize.Height * 0.67F, ClientSize.Width - 8, ClientSize.Height * 0.14F);
+                float resetFontSize = Math.Max(4.6F, Math.Min(5.8F, ClientSize.Width * 0.052F));
+                RectangleF resetBounds = new RectangleF(4, ClientSize.Height * 0.49F, ClientSize.Width - 8, ClientSize.Height * 0.34F);
                 using (var resetFont = new Font("Segoe UI", resetFontSize, FontStyle.Regular))
                 using (var resetBrush = new SolidBrush(Blend(Theme.Muted, Theme.Text, 0.18F)))
                 using (var resetFormat = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
@@ -1364,6 +1476,20 @@ internal sealed class WidgetForm : Form
             using (GraphicsPath borderPath = RoundedPath(new Rectangle(0, 0, ClientSize.Width - 1, ClientSize.Height - 1), CurrentCornerRadius()))
             using (var pen = new Pen(Theme.Border))
                 e.Graphics.DrawPath(pen, borderPath);
+        }
+    }
+
+    private void DrawQuotaRing(Graphics graphics, Rectangle bounds, int width, double remainingPercent, Color accent, Color trackColor)
+    {
+        Color renderedAccent = compactHovered ? Blend(accent, Theme.Text, 0.22F) : accent;
+        using (var track = new Pen(trackColor, width))
+            graphics.DrawEllipse(track, bounds);
+        using (var progress = new Pen(renderedAccent, width))
+        {
+            progress.StartCap = LineCap.Round;
+            progress.EndCap = LineCap.Round;
+            float sweep = (float)Math.Max(0, Math.Min(359.9, 360.0 * remainingPercent / 100.0));
+            if (sweep > 0) graphics.DrawArc(progress, bounds, -90, sweep);
         }
     }
 }

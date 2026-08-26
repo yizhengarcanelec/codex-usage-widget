@@ -1,11 +1,11 @@
 # Codex Usage Widget
 
-一个轻量、无边框的 Windows 桌面小组件，用于实时查看本机 Codex。窗口支持分级响应式布局：完整面板、窄面板、仅今日 Token 面板，以及最小圆形额度球。
+一个轻量、无边框的 Windows 桌面小组件，用于实时查看本机 Codex 的今日 Token，以及 5 小时和周额度。窗口支持分级响应式布局：完整面板、窄面板、仅今日 Token 面板，以及最小圆形额度球。
 
 - 今日 Token 总量
 - Input / Output / Cached Token 明细
-- 周额度剩余与已用比例
-- 周额度重置时间
+- 5 小时额度与周额度的剩余、已用比例
+- 两种额度各自的重置时间
 
 <table>
   <tr>
@@ -13,8 +13,8 @@
     <th>圆形额度球(界面缩小后)</th>
   </tr>
   <tr>
-    <td><img src="docs/screenshot.png" alt="Codex Usage Widget 完整面板" width="354"></td>
-    <td align="center"><img src="docs/compact-mode.png" alt="Codex Usage Widget 圆形额度球" width="126"></td>
+    <td><img src="docs/screenshot.png" alt="Codex Usage Widget 双额度完整面板" width="354"></td>
+    <td align="center"><img src="docs/compact-mode.png" alt="Codex Usage Widget 双环圆形额度球" width="126"></td>
   </tr>
 </table>
 
@@ -34,7 +34,8 @@ SHA-256：`5EFE249CEB663587FE5F00F366032C0E25B9A70F26BC2CC87825E6A8086F86DF`
 - 拖动窗口空白区域可移动。
 - 拖动任意边缘或四个角可分别调整宽、高；完整面板大小固定为 360×286（系统缩放前的逻辑尺寸）。
 - 缩小时会依次隐藏次要模块，最小矩形只显示今日 Token；宽、高均到达矩形下限后继续向内拖动才会变为圆形额度球。
-- 圆球大小可在 84×84 到 132×132 之间等比例缩放；悬停时进度环轻微提亮并显示额度重置日期。
+- 圆球大小可在 84×84 到 132×132 之间等比例缩放；内环显示 5 小时额度，外环显示周额度，中心显示两者中更紧张的剩余比例。
+- 圆球悬停时进度环轻微提亮，并分别显示 5 小时与周额度的重置日期。
 - 双击窗口或使用右键菜单，可在圆球与标准面板之间快速切换。
 - 支持 CN/EN 中英文切换和五套配色主题，并会保存选择。
 - 右键窗口可立即刷新、切换置顶、切换尺寸、最小化或退出，菜单项均为中文。
@@ -53,7 +54,7 @@ SHA-256：`5EFE249CEB663587FE5F00F366032C0E25B9A70F26BC2CC87825E6A8086F86DF`
 
 程序不需要 API Key，不联网，也不会上传会话内容。今日 Token 按本地日历日汇总；如果本机缺少当天较早的记录，状态栏会显示 `partial history`。
 
-周额度来自 Codex 写入本地会话事件的限额百分比，不是可换算成 Token 的余额。
+5 小时额度与周额度来自 Codex 写入本地会话事件的两个独立限额窗口。程序不会用今日 Token 数量反推额度；旧日志只有一种窗口时，另一项会显示 `--%`。
 
 ## 兼容性
 
