@@ -417,7 +417,7 @@ internal sealed class LanguageToggle : Control
     }
 }
 
-internal sealed class SmoothButton : Button
+internal sealed class SmoothButton : Control
 {
     public Color SurfaceColor = Color.FromArgb(237, 237, 240);
     public Color HoverColor = Color.FromArgb(229, 229, 234);
@@ -427,15 +427,17 @@ internal sealed class SmoothButton : Button
 
     public SmoothButton()
     {
-        FlatStyle = FlatStyle.Flat;
-        FlatAppearance.BorderSize = 0;
         TabStop = false;
         Cursor = Cursors.Hand;
-        UseVisualStyleBackColor = false;
         SetStyle(ControlStyles.UserPaint | ControlStyles.SupportsTransparentBackColor |
                  ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
-                 ControlStyles.ResizeRedraw, true);
+                 ControlStyles.ResizeRedraw | ControlStyles.StandardClick, true);
         BackColor = Color.Transparent;
+    }
+
+    public void PerformClick()
+    {
+        OnClick(EventArgs.Empty);
     }
 
     protected override void OnMouseEnter(EventArgs e)
@@ -645,9 +647,9 @@ internal sealed class WidgetForm : Form
     private readonly Panel fiveHourProgressTrack;
     private readonly Panel progressFill;
     private readonly Panel progressTrack;
-    private readonly Button pinButton;
-    private readonly Button closeButton;
-    private readonly Button themeButton;
+    private readonly SmoothButton pinButton;
+    private readonly SmoothButton closeButton;
+    private readonly SmoothButton themeButton;
     private readonly CompactExpandButton expandButton;
     private readonly LanguageToggle languageToggle;
     private readonly ContextMenuStrip contextMenu;
@@ -907,7 +909,7 @@ internal sealed class WidgetForm : Form
         MouseDown += DragWindow;
         DoubleClick += ToggleSizeMode;
         foreach (Control control in Controls)
-            if (!(control is Button) && control != languageToggle && control != expandButton)
+            if (!(control is Button) && !(control is SmoothButton) && control != languageToggle && control != expandButton)
                 control.MouseDown += DragWindow;
 
         contextMenu = new ContextMenuStrip();
@@ -994,7 +996,7 @@ internal sealed class WidgetForm : Form
         return new Label { Text = text, Location = new Point(x, y), Size = new Size(width, height), ForeColor = color, BackColor = Color.Transparent, Font = new Font(UiFontName, size, style), AutoEllipsis = true };
     }
 
-    private static Button MakeButton(string text, int x, int y, int width, int height)
+    private static SmoothButton MakeButton(string text, int x, int y, int width, int height)
     {
         var button = new SmoothButton { Text = text, Location = new Point(x, y), Size = new Size(width, height), ForeColor = Color.FromArgb(99, 99, 102), Font = new Font(UiFontName, 7.5F, FontStyle.Bold) };
         return button;
@@ -1242,25 +1244,17 @@ internal sealed class WidgetForm : Form
         Invalidate(true);
     }
 
-    private void ApplyButtonTheme(Button button)
+    private void ApplyButtonTheme(SmoothButton button)
     {
         button.ForeColor = Theme.Muted;
-        SmoothButton smooth = button as SmoothButton;
-        if (smooth != null)
-        {
-            smooth.BackColor = Theme.Background;
-            smooth.SurfaceColor = Theme.Button;
-            smooth.HoverColor = Blend(Theme.Button, Theme.Accent, Theme.IsDark ? 0.18F : 0.10F);
-            smooth.PressedColor = Blend(Theme.Button, Theme.Accent, Theme.IsDark ? 0.28F : 0.18F);
-            Region old = smooth.Region;
-            smooth.Region = null;
-            if (old != null) old.Dispose();
-            smooth.Invalidate();
-            return;
-        }
-
-        button.BackColor = Theme.Button;
-        button.FlatAppearance.BorderSize = 0;
+        button.BackColor = Theme.Background;
+        button.SurfaceColor = Theme.Button;
+        button.HoverColor = Blend(Theme.Button, Theme.Accent, Theme.IsDark ? 0.18F : 0.10F);
+        button.PressedColor = Blend(Theme.Button, Theme.Accent, Theme.IsDark ? 0.28F : 0.18F);
+        Region old = button.Region;
+        button.Region = null;
+        if (old != null) old.Dispose();
+        button.Invalidate();
     }
 
     private string AppearanceDisplayName()
