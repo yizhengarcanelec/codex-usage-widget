@@ -2,38 +2,45 @@
 
 一个轻量、无边框的 Windows 桌面小组件，用于实时查看本机 Codex 的今日 Token、5 小时额度和周额度。v0.6.0 采用受 Apple 设计语言启发的浅色/深色界面、圆角卡片与克制动效。所有数据只从本机 Codex 会话记录读取，不需要 API Key，也不会上传会话内容。
 
-- 今日 Token 总量
-- Input / Output / Cached Token 明细
-- 5 小时额度与周额度的剩余比例、已用比例和独立重置时间
-- 完整面板、窄面板、仅今日 Token 面板和双环圆形额度球
-- 自动/浅色/深色外观、五种强调色、CN/EN 中英文切换和窗口置顶
-- 约 200ms 的尺寸与颜色过渡，并遵循 Windows“显示动画”设置
-- 系统托盘后台运行，并记住用户选择的关闭行为
-
 <table>
   <tr>
     <th>完整面板</th>
     <th>圆形额度球（界面缩小后）</th>
   </tr>
   <tr>
-    <td><img src="docs/screenshot.png" alt="Codex Usage Widget 双额度完整面板" width="354"></td>
-    <td align="center"><img src="docs/compact-mode.png" alt="Codex Usage Widget 双环圆形额度球" width="126"></td>
+    <td><img src="docs/展开图.png" alt="Codex Usage Widget 完整面板" width="570"></td>
+    <td align="center"><img src="docs/缩略图.png" alt="Codex Usage Widget 圆形额度球" width="112"></td>
   </tr>
 </table>
 
+- 今日 Token 总量
+- Input / Output / Cached Token 明细
+- 5 小时额度与周额度的剩余比例、已用比例和独立重置时间
+- 完整面板、窄面板、仅今日 Token 面板和双环圆形额度球
+- 浅色/深色外观、五种强调色、CN/EN 中英文切换和窗口置顶
+- 约 200ms 的尺寸与颜色过渡，并遵循 Windows“显示动画”设置
+- 系统托盘后台运行，并记住用户选择的关闭行为
+
 ## Download for Windows
 
-**[Download Codex Usage Widget v0.6.0](https://github.com/yizhengarcanelec/codex-usage-widget/raw/main/download/Codex-Usage-Widget-v0.6.0-win-portable.zip)**
+**[下载便携版 ZIP](https://github.com/yizhengarcanelec/codex-usage-widget/raw/main/download/Codex-Usage-Widget-v0.6.0-win-portable.zip)**
+
+[直接下载 EXE](https://github.com/yizhengarcanelec/codex-usage-widget/raw/main/download/GPTUsageWidget.exe) · [下载 RAR](https://github.com/yizhengarcanelec/codex-usage-widget/raw/main/download/GPTUsageWidget-v0.6.0.rar)
 
 下载 ZIP 后解压，双击 `GPTUsageWidget.exe` 即可。便携包内含程序和使用说明，无需安装。
 
-SHA-256：`D2EA2074679BFCBBB28EB31D9419A9BB2EDF07788B0B55863D7DD5250AD85086`
+EXE SHA-256：`CC667091C4ADFE4B42A82C247061A97F5B147EAA6DE48B6D4EB77F63041BC4EB`
 
 ## v0.6.0 更新
 
 - 全面改为受 Apple 设计语言启发的视觉：更轻的层级、圆角卡片、胶囊控件和清晰留白。
-- 新增自动、浅色、深色三种外观；自动模式会跟随 Windows 应用颜色设置。
+- 提供浅色、深色两种外观，顶部按钮可直接往返切换。
 - 五种主题改为统一的强调色体系：Apple Green、California Blue、Orchid Purple、Watermelon Pink、Sunset Orange。
+- 左上角彩色圆点现在是强调色按钮，单击即可切换到下一种强调色。
+- 增加 Per-Monitor V2 高 DPI 支持，并改进文字、窗口圆角、圆形外圈、双额度圆环和进度条的抗锯齿绘制。
+- 完整面板调整为紧凑的 380×262 逻辑尺寸，并移除底部 `Updated` 与 `LOCAL ONLY` 状态栏。
+- 圆形额度球调整为 68×68 至 96×96 逻辑尺寸，中心数字更克制，并按显示器 DPI 正确缩放。
+- 无边框窗口使用真实区域裁切四角，避免只画圆角但未切除角落背景的问题。
 - 外观、强调色和紧凑模式切换加入克制的缓动过渡；系统关闭动画效果时会自动停用动效。
 - 圆形额度球沿用双环设计，悬停时显示重置日期；展开箭头改为无底色、低存在感的细线控件，不再遮挡圆环。
 
@@ -50,13 +57,13 @@ SHA-256：`D2EA2074679BFCBBB28EB31D9419A9BB2EDF07788B0B55863D7DD5250AD85086`
 
 - 每 5 秒自动刷新。
 - 拖动窗口空白区域可移动。
-- 拖动任意边缘或四个角可分别调整宽、高；完整面板大小固定为 360×286（系统缩放前的逻辑尺寸）。
+- 拖动任意边缘或四个角可分别调整宽、高；完整面板默认大小为 380×262（系统缩放前的逻辑尺寸；当前 150% 缩放下为 570×393 物理像素）。
 - 缩小时会依次隐藏次要模块，最小矩形只显示今日 Token；宽、高均到达矩形下限后继续向内拖动才会变为圆形额度球。
-- 圆球大小可在 84×84 到 132×132 之间等比例缩放；内环显示 5 小时额度，外环显示周额度，中心显示两者中更紧张的剩余比例。
+- 圆球大小可在 68×68 到 96×96 逻辑像素之间等比例缩放（当前 150% 缩放下为 102×102 到 144×144 物理像素）；内环显示 5 小时额度，外环显示周额度，中心显示两者中更紧张的剩余比例。
 - 圆球悬停时进度环轻微提亮，并分别显示 5 小时与周额度的重置日期。
 - 双击窗口或使用右键菜单，可在圆球与标准面板之间快速切换。
 - 支持 CN/EN 中英文切换；外观模式、强调色和语言选择都会保存。
-- 顶部外观按钮在自动、浅色、深色之间循环；右键菜单可直接选择指定外观和强调色。
+- 顶部外观按钮在浅色、深色之间切换；单击左上角彩色圆点可循环强调色，右键菜单也可直接选择。
 - 右键窗口可立即刷新、切换置顶、切换尺寸、最小化或退出，菜单项均为中文。
 - 首次点击 `X` 会询问“彻底结束程序”或“最小化至后台”；选择会被记住，之后可在右键的“关闭行为”中修改。
 - 选择“最小化至后台”后，窗口和任务栏图标都会隐藏，程序继续刷新并驻留在 Windows 系统托盘；双击托盘图标可恢复窗口。
@@ -78,7 +85,7 @@ SHA-256：`D2EA2074679BFCBBB28EB31D9419A9BB2EDF07788B0B55863D7DD5250AD85086`
 - `%USERPROFILE%\.codex\sessions`
 - `%USERPROFILE%\.codex\archived_sessions`
 
-程序不需要 API Key，不联网，也不会上传会话内容。今日 Token 按本地日历日汇总；如果本机缺少当天较早的记录，状态栏会显示 `partial history`。
+程序不需要 API Key，不联网，也不会上传会话内容。今日 Token 按本地日历日汇总。
 
 程序不会使用今日 Token 数量反推额度。如果本机缺少某个额度窗口的最新记录，对应位置会显示 `--%`。
 

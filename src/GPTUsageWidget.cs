@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Text;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -240,7 +241,6 @@ internal sealed class WidgetTheme
 
 internal enum AppearanceMode
 {
-    Auto,
     Light,
     Dark
 }
@@ -276,8 +276,8 @@ internal sealed class RoundedPanel : Panel
     protected override void OnPaintBackground(PaintEventArgs e)
     {
         e.Graphics.Clear(BackColor);
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        using (GraphicsPath path = CreateRoundedPath(new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1)), CornerRadius))
+        ConfigureGraphics(e.Graphics);
+        using (GraphicsPath path = CreateRoundedPath(new RectangleF(0.5F, 0.5F, Math.Max(1F, Width - 1F), Math.Max(1F, Height - 1F)), CornerRadius))
         using (var brush = new SolidBrush(SurfaceColor))
             e.Graphics.FillPath(brush, path);
     }
@@ -285,8 +285,8 @@ internal sealed class RoundedPanel : Panel
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        using (GraphicsPath path = CreateRoundedPath(new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1)), CornerRadius))
+        ConfigureGraphics(e.Graphics);
+        using (GraphicsPath path = CreateRoundedPath(new RectangleF(0.5F, 0.5F, Math.Max(1F, Width - 1F), Math.Max(1F, Height - 1F)), CornerRadius))
         using (var pen = new Pen(OutlineColor))
             e.Graphics.DrawPath(pen, path);
         if (DividerY > 0 && DividerY < Height)
@@ -296,11 +296,11 @@ internal sealed class RoundedPanel : Panel
         }
     }
 
-    private static GraphicsPath CreateRoundedPath(Rectangle bounds, int radius)
+    private static GraphicsPath CreateRoundedPath(RectangleF bounds, float radius)
     {
         var path = new GraphicsPath();
-        int diameter = Math.Max(2, Math.Min(Math.Min(bounds.Width, bounds.Height), radius * 2));
-        Rectangle arc = new Rectangle(bounds.X, bounds.Y, diameter, diameter);
+        float diameter = Math.Max(2F, Math.Min(Math.Min(bounds.Width, bounds.Height), radius * 2F));
+        RectangleF arc = new RectangleF(bounds.X, bounds.Y, diameter, diameter);
         path.AddArc(arc, 180, 90);
         arc.X = bounds.Right - diameter;
         path.AddArc(arc, 270, 90);
@@ -308,6 +308,108 @@ internal sealed class RoundedPanel : Panel
         path.AddArc(arc, 0, 90);
         arc.X = bounds.Left;
         path.AddArc(arc, 90, 90);
+        path.CloseFigure();
+        return path;
+    }
+
+    private static void ConfigureGraphics(Graphics graphics)
+    {
+        graphics.SmoothingMode = SmoothingMode.HighQuality;
+        graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+        graphics.CompositingQuality = CompositingQuality.HighQuality;
+    }
+}
+
+internal sealed class AccentDotButton : Control
+{
+    public Color AccentColor = Color.FromArgb(52, 199, 89);
+    private bool hovered;
+    private bool pressed;
+
+    public AccentDotButton()
+    {
+        Size = new Size(26, 28);
+        Cursor = Cursors.Hand;
+        TabStop = false;
+        AccessibleName = "Next accent color";
+        SetStyle(ControlStyles.UserPaint | ControlStyles.SupportsTransparentBackColor |
+                 ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
+                 ControlStyles.ResizeRedraw | ControlStyles.StandardClick, true);
+        BackColor = Color.Transparent;
+    }
+
+    protected override void OnMouseEnter(EventArgs e) { hovered = true; Invalidate(); base.OnMouseEnter(e); }
+    protected override void OnMouseLeave(EventArgs e) { hovered = false; pressed = false; Invalidate(); base.OnMouseLeave(e); }
+    protected override void OnMouseDown(MouseEventArgs e) { if (e.Button == MouseButtons.Left) pressed = true; Invalidate(); base.OnMouseDown(e); }
+    protected override void OnMouseUp(MouseEventArgs e) { pressed = false; Invalidate(); base.OnMouseUp(e); }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        e.Graphics.SmoothingMode = SmoothingMode.HighQuality;
+        e.Graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+        e.Graphics.CompositingQuality = CompositingQuality.HighQuality;
+        float scale = Math.Max(1F, Height / 28F);
+        float diameter = (pressed ? 9F : hovered ? 12F : 10F) * scale;
+        RectangleF dot = new RectangleF((Width - diameter) / 2F, (Height - diameter) / 2F, diameter, diameter);
+        if (hovered)
+        {
+            using (var halo = new SolidBrush(Color.FromArgb(42, AccentColor)))
+                e.Graphics.FillEllipse(halo, RectangleF.Inflate(dot, 4F * scale, 4F * scale));
+        }
+        using (var brush = new SolidBrush(AccentColor))
+            e.Graphics.FillEllipse(brush, dot);
+    }
+}
+
+internal sealed class SmoothProgressBar : Control
+{
+    private double value;
+    private Color trackColor = Color.FromArgb(218, 220, 225);
+    private Color fillColor = Color.FromArgb(52, 199, 89);
+
+    public double Value
+    {
+        get { return value; }
+        set { this.value = Math.Max(0, Math.Min(100, value)); Invalidate(); }
+    }
+
+    public Color TrackColor { get { return trackColor; } set { trackColor = value; Invalidate(); } }
+    public Color FillColor { get { return fillColor; } set { fillColor = value; Invalidate(); } }
+
+    public SmoothProgressBar()
+    {
+        TabStop = false;
+        SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint |
+                 ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        e.Graphics.SmoothingMode = SmoothingMode.HighQuality;
+        e.Graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+        e.Graphics.CompositingQuality = CompositingQuality.HighQuality;
+        RectangleF track = new RectangleF(0.5F, 0.5F, Math.Max(1F, Width - 1F), Math.Max(1F, Height - 1F));
+        using (GraphicsPath path = PillPath(track))
+        using (var brush = new SolidBrush(TrackColor))
+            e.Graphics.FillPath(brush, path);
+
+        float fillWidth = (float)(track.Width * Value / 100.0);
+        if (fillWidth <= 0.01F) return;
+        RectangleF fill = new RectangleF(track.X, track.Y, Math.Max(track.Height, fillWidth), track.Height);
+        fill.Width = Math.Min(track.Width, fill.Width);
+        using (GraphicsPath path = PillPath(fill))
+        using (var brush = new SolidBrush(FillColor))
+            e.Graphics.FillPath(brush, path);
+    }
+
+    private static GraphicsPath PillPath(RectangleF bounds)
+    {
+        var path = new GraphicsPath();
+        float diameter = Math.Max(1F, Math.Min(bounds.Width, bounds.Height));
+        RectangleF arc = new RectangleF(bounds.Left, bounds.Top, diameter, diameter);
+        path.AddArc(arc, 90, 180);
+        arc.X = bounds.Right - diameter;
+        path.AddArc(arc, 270, 180);
         path.CloseFigure();
         return path;
     }
@@ -378,7 +480,10 @@ internal sealed class LanguageToggle : Control
 
     protected override void OnPaint(PaintEventArgs e)
     {
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        e.Graphics.SmoothingMode = SmoothingMode.HighQuality;
+        e.Graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+        e.Graphics.CompositingQuality = CompositingQuality.HighQuality;
+        e.Graphics.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
         Rectangle track = new Rectangle(0, 1, Width - 1, Height - 2);
         using (GraphicsPath path = PillPath(track))
         using (var brush = new SolidBrush(TrackColor))
@@ -476,8 +581,10 @@ internal sealed class SmoothButton : Control
 
     protected override void OnPaint(PaintEventArgs e)
     {
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        e.Graphics.SmoothingMode = SmoothingMode.HighQuality;
         e.Graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+        e.Graphics.CompositingQuality = CompositingQuality.HighQuality;
+        e.Graphics.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
         Color fill = pressed ? PressedColor : hovered ? HoverColor : SurfaceColor;
         RectangleF bounds = new RectangleF(0.6F, 0.6F, Math.Max(1F, Width - 1.2F), Math.Max(1F, Height - 1.2F));
         using (GraphicsPath path = PillPath(bounds))
@@ -540,7 +647,9 @@ internal sealed class CompactExpandButton : Control
 
     protected override void OnPaint(PaintEventArgs e)
     {
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        e.Graphics.SmoothingMode = SmoothingMode.HighQuality;
+        e.Graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+        e.Graphics.CompositingQuality = CompositingQuality.HighQuality;
         Color quiet = BlendColor(SurfaceColor, MutedColor, 0.40F);
         Color rendered = BlendColor(quiet, AccentColor, 0.05F + 0.55F * revealAmount);
         float centerX = Width / 2F;
@@ -624,7 +733,7 @@ internal sealed class CloseChoiceDialog : Form
 
 internal sealed class WidgetForm : Form
 {
-    private readonly Label brandDot;
+    private readonly AccentDotButton brandDot;
     private readonly Label titleLabel;
     private readonly Label todayTitle;
     private readonly Label breakdownTitle;
@@ -640,13 +749,9 @@ internal sealed class WidgetForm : Form
     private readonly Label weeklyDetail;
     private readonly Label fiveHourResetValue;
     private readonly Label resetValue;
-    private readonly Label statusValue;
-    private readonly Label localOnly;
     private readonly RoundedPanel weeklyCard;
-    private readonly Panel fiveHourProgressFill;
-    private readonly Panel fiveHourProgressTrack;
-    private readonly Panel progressFill;
-    private readonly Panel progressTrack;
+    private readonly SmoothProgressBar fiveHourProgressTrack;
+    private readonly SmoothProgressBar progressTrack;
     private readonly SmoothButton pinButton;
     private readonly SmoothButton closeButton;
     private readonly SmoothButton themeButton;
@@ -704,10 +809,10 @@ internal sealed class WidgetForm : Form
     private double animatedFiveHourRemaining;
     private double animatedWeeklyRemaining;
 
-    private const int CompactDiameter = 84;
-    private const int CompactMaxDiameter = 132;
-    private const int PanelWidth = 360;
-    private const int PanelHeight = 286;
+    private const int CompactDiameter = 68;
+    private const int CompactMaxDiameter = 96;
+    private const int PanelWidth = 380;
+    private const int PanelHeight = 262;
     private const int PanelMinimumWidth = 196;
     private const int PanelMinimumHeight = 130;
     private const int CompactDragTriggerWidth = 182;
@@ -715,7 +820,6 @@ internal sealed class WidgetForm : Form
     private const int FullLayoutWidth = 340;
     private const int DetailLayoutHeight = 150;
     private const int WeeklyLayoutHeight = 250;
-    private const int StatusLayoutHeight = 278;
     private const int ModeTransitionDurationMs = 210;
     private const int ThemeTransitionDurationMs = 240;
     private const int ValueTransitionDurationMs = 260;
@@ -736,7 +840,9 @@ internal sealed class WidgetForm : Form
     [DllImport("user32.dll")] private static extern bool ReleaseCapture();
     [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hWnd, int msg, int wParam, int lParam);
     [DllImport("user32.dll")] private static extern bool RedrawWindow(IntPtr hWnd, IntPtr updateRect, IntPtr updateRegion, uint flags);
+    [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr hwnd);
     [DllImport("user32.dll", SetLastError = true)] private static extern bool SystemParametersInfo(uint action, uint parameter, ref bool value, uint update);
+    [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int value, int valueSize);
 
     private static WidgetTheme BuildTheme(int accentIndex, bool dark)
     {
@@ -790,13 +896,14 @@ internal sealed class WidgetForm : Form
     public WidgetForm(bool startCompact)
     {
         LoadPreferences();
-        resolvedDarkMode = appearanceMode == AppearanceMode.Dark || (appearanceMode == AppearanceMode.Auto && SystemPrefersDarkMode());
+        resolvedDarkMode = appearanceMode == AppearanceMode.Dark;
         motionEnabled = ClientAnimationsEnabled();
         renderedTheme = BuildTheme(themeIndex, resolvedDarkMode);
+        AutoScaleMode = AutoScaleMode.None;
         Text = "Codex Usage Widget";
         ClientSize = new Size(PanelWidth, PanelHeight);
-        MinimumSize = new Size(CompactDiameter, CompactDiameter);
-        MaximumSize = new Size(PanelWidth, PanelHeight);
+        MinimumSize = Size.Empty;
+        MaximumSize = Size.Empty;
         FormBorderStyle = FormBorderStyle.None;
         BackColor = Theme.Background;
         ForeColor = Theme.Text;
@@ -807,13 +914,13 @@ internal sealed class WidgetForm : Form
         DoubleBuffered = true;
         SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         UpdateStyles();
-        AutoScaleMode = AutoScaleMode.Dpi;
         Font = new Font(UiFontName, 9F);
 
         var work = Screen.PrimaryScreen.WorkingArea;
         Location = new Point(work.Right - Width - 20, work.Bottom - Height - 20);
 
-        brandDot = MakeLabel("●", 18, 13, 15, 20, 9F, Theme.Accent, FontStyle.Bold);
+        brandDot = new AccentDotButton { Location = new Point(8, 9), AccentColor = Theme.Accent };
+        brandDot.Click += delegate { SetTheme((themeIndex + 1) % AccentPalettes.Length); };
         titleLabel = MakeLabel("CODEX METER", 37, 14, 130, 22, 10F, Theme.Text, FontStyle.Bold);
         Controls.Add(brandDot);
         Controls.Add(titleLabel);
@@ -829,6 +936,7 @@ internal sealed class WidgetForm : Form
         closeButton.Click += delegate { HandleCloseRequest(); };
         toolTip = new ToolTip();
         toolTip.SetToolTip(closeButton, "关闭行为");
+        toolTip.SetToolTip(brandDot, "切换强调色");
 
         languageToggle = new LanguageToggle { Location = new Point(187, 14), Anchor = AnchorStyles.Top | AnchorStyles.Right, Chinese = chinese };
         languageToggle.ValueChanged += delegate { SetLanguage(languageToggle.Chinese); };
@@ -863,9 +971,7 @@ internal sealed class WidgetForm : Form
         weeklyCard.Controls.Add(fiveHourTitle);
         weeklyCard.Controls.Add(fiveHourValue);
 
-        fiveHourProgressTrack = new Panel { Location = new Point(13, 27), Size = new Size(302, 6), BackColor = Theme.Track, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
-        fiveHourProgressFill = new Panel { Location = new Point(0, 0), Size = new Size(0, 6), BackColor = Theme.Accent };
-        fiveHourProgressTrack.Controls.Add(fiveHourProgressFill);
+        fiveHourProgressTrack = new SmoothProgressBar { Location = new Point(13, 27), Size = new Size(302, 7), TrackColor = Theme.Track, FillColor = Theme.Accent, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
         weeklyCard.Controls.Add(fiveHourProgressTrack);
         fiveHourDetail = MakeLabel("Waiting for local data", 13, 35, 170, 15, 7.5F, Theme.SoftText, FontStyle.Regular);
         fiveHourResetValue = MakeLabel("", 189, 35, 126, 15, 7.5F, Theme.DimText, FontStyle.Regular);
@@ -880,23 +986,13 @@ internal sealed class WidgetForm : Form
         weeklyValue.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         weeklyCard.Controls.Add(weeklyValue);
 
-        progressTrack = new Panel { Location = new Point(13, 77), Size = new Size(302, 6), BackColor = Theme.Track, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
-        progressFill = new Panel { Location = new Point(0, 0), Size = new Size(0, 6), BackColor = Theme.Accent };
-        progressTrack.Controls.Add(progressFill);
+        progressTrack = new SmoothProgressBar { Location = new Point(13, 77), Size = new Size(302, 7), TrackColor = Theme.Track, FillColor = Theme.Accent, Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right };
         weeklyCard.Controls.Add(progressTrack);
         weeklyDetail = MakeLabel("Waiting for local data", 13, 85, 170, 15, 7.5F, Theme.SoftText, FontStyle.Regular);
         resetValue = MakeLabel("", 189, 85, 126, 15, 7.5F, Theme.DimText, FontStyle.Regular);
         resetValue.TextAlign = ContentAlignment.MiddleRight;
         resetValue.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         weeklyCard.Controls.Add(weeklyDetail); weeklyCard.Controls.Add(resetValue);
-
-        statusValue = MakeLabel("Starting...", 18, 257, 260, 18, 8F, Theme.DimText, FontStyle.Regular);
-        statusValue.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-        Controls.Add(statusValue);
-        localOnly = MakeLabel("LOCAL ONLY", 267, 257, 77, 18, 7.2F, Theme.DimText, FontStyle.Bold);
-        localOnly.TextAlign = ContentAlignment.MiddleRight;
-        localOnly.Anchor = AnchorStyles.Bottom | AnchorStyles.Right;
-        Controls.Add(localOnly);
 
         foreach (Control control in Controls) detailControls.Add(control);
 
@@ -909,7 +1005,7 @@ internal sealed class WidgetForm : Form
         MouseDown += DragWindow;
         DoubleClick += ToggleSizeMode;
         foreach (Control control in Controls)
-            if (!(control is Button) && !(control is SmoothButton) && control != languageToggle && control != expandButton)
+            if (!(control is Button) && !(control is SmoothButton) && control != brandDot && control != languageToggle && control != expandButton)
                 control.MouseDown += DragWindow;
 
         contextMenu = new ContextMenuStrip();
@@ -925,13 +1021,10 @@ internal sealed class WidgetForm : Form
         contextMenu.Items.Add(languageMenu);
 
         var appearanceMenu = new ToolStripMenuItem("外观 / Appearance");
-        var autoAppearance = new ToolStripMenuItem("自动（跟随系统）", null, delegate { SetAppearanceMode(AppearanceMode.Auto); });
         var lightAppearance = new ToolStripMenuItem("浅色", null, delegate { SetAppearanceMode(AppearanceMode.Light); });
         var darkAppearance = new ToolStripMenuItem("深色", null, delegate { SetAppearanceMode(AppearanceMode.Dark); });
-        appearanceMenuItems.Add(autoAppearance);
         appearanceMenuItems.Add(lightAppearance);
         appearanceMenuItems.Add(darkAppearance);
-        appearanceMenu.DropDownItems.Add(autoAppearance);
         appearanceMenu.DropDownItems.Add(lightAppearance);
         appearanceMenu.DropDownItems.Add(darkAppearance);
         contextMenu.Items.Add(appearanceMenu);
@@ -971,16 +1064,22 @@ internal sealed class WidgetForm : Form
         valueAnimationTimer.Tick += delegate { AdvanceValueAnimation(); };
         Shown += delegate
         {
+            MinimumSize = UiSize(CompactDiameter, CompactDiameter);
+            MaximumSize = UiSize(PanelWidth, PanelHeight);
             if (!startCompact && !compactMode)
             {
                 Rectangle before = Bounds;
                 changingMode = true;
-                ClientSize = new Size(PanelWidth, PanelHeight);
+                ClientSize = UiSize(PanelWidth, PanelHeight);
                 Rectangle workArea = Screen.FromRectangle(before).WorkingArea;
                 Location = new Point(
                     Math.Max(workArea.Left, Math.Min(workArea.Right - Width, before.Right - Width)),
                     Math.Max(workArea.Top, Math.Min(workArea.Bottom - Height, before.Bottom - Height)));
                 changingMode = false;
+            }
+            else if (compactMode)
+            {
+                ClientSize = UiSize(CompactDiameter, CompactDiameter);
             }
             UpdateLayoutMode();
             refreshTimer.Start();
@@ -991,9 +1090,36 @@ internal sealed class WidgetForm : Form
         if (startCompact) SetCompactMode(true);
     }
 
+    private float DpiScale
+    {
+        get
+        {
+            if (IsHandleCreated)
+            {
+                try
+                {
+                    uint dpi = GetDpiForWindow(Handle);
+                    if (dpi >= 96) return dpi / 96F;
+                }
+                catch { }
+            }
+            return Math.Max(1F, DeviceDpi / 96F);
+        }
+    }
+
+    private int Ui(int logicalPixels)
+    {
+        return (int)Math.Round(logicalPixels * DpiScale);
+    }
+
+    private Size UiSize(int logicalWidth, int logicalHeight)
+    {
+        return new Size(Ui(logicalWidth), Ui(logicalHeight));
+    }
+
     private static Label MakeLabel(string text, int x, int y, int width, int height, float size, Color color, FontStyle style)
     {
-        return new Label { Text = text, Location = new Point(x, y), Size = new Size(width, height), ForeColor = color, BackColor = Color.Transparent, Font = new Font(UiFontName, size, style), AutoEllipsis = true };
+        return new Label { Text = text, Location = new Point(x, y), Size = new Size(width, height), ForeColor = color, BackColor = Color.Transparent, Font = new Font(UiFontName, size, style), AutoEllipsis = true, UseCompatibleTextRendering = false };
     }
 
     private static SmoothButton MakeButton(string text, int x, int y, int width, int height)
@@ -1025,7 +1151,7 @@ internal sealed class WidgetForm : Form
     private void SetAppearanceMode(AppearanceMode mode)
     {
         appearanceMode = mode;
-        bool nextDark = mode == AppearanceMode.Dark || (mode == AppearanceMode.Auto && SystemPrefersDarkMode());
+        bool nextDark = mode == AppearanceMode.Dark;
         resolvedDarkMode = nextDark;
         BeginThemeTransition(BuildTheme(themeIndex, resolvedDarkMode));
         SavePreferences();
@@ -1033,18 +1159,7 @@ internal sealed class WidgetForm : Form
 
     private void CycleAppearanceMode()
     {
-        if (appearanceMode == AppearanceMode.Auto) SetAppearanceMode(AppearanceMode.Light);
-        else if (appearanceMode == AppearanceMode.Light) SetAppearanceMode(AppearanceMode.Dark);
-        else SetAppearanceMode(AppearanceMode.Auto);
-    }
-
-    private void RefreshAutomaticAppearance()
-    {
-        if (appearanceMode != AppearanceMode.Auto) return;
-        bool nextDark = SystemPrefersDarkMode();
-        if (nextDark == resolvedDarkMode) return;
-        resolvedDarkMode = nextDark;
-        BeginThemeTransition(BuildTheme(themeIndex, resolvedDarkMode));
+        SetAppearanceMode(appearanceMode == AppearanceMode.Light ? AppearanceMode.Dark : AppearanceMode.Light);
     }
 
     private void BeginThemeTransition(WidgetTheme target)
@@ -1104,7 +1219,7 @@ internal sealed class WidgetForm : Form
     {
         chinese = String.Equals(CultureInfo.CurrentUICulture.TwoLetterISOLanguageName, "zh", StringComparison.OrdinalIgnoreCase);
         themeIndex = 0;
-        appearanceMode = AppearanceMode.Auto;
+        appearanceMode = SystemPrefersDarkMode() ? AppearanceMode.Dark : AppearanceMode.Light;
         closeBehavior = CloseBehavior.Ask;
         try
         {
@@ -1126,7 +1241,7 @@ internal sealed class WidgetForm : Form
                 {
                     if (String.Equals(parts[1], "light", StringComparison.OrdinalIgnoreCase)) appearanceMode = AppearanceMode.Light;
                     else if (String.Equals(parts[1], "dark", StringComparison.OrdinalIgnoreCase)) appearanceMode = AppearanceMode.Dark;
-                    else appearanceMode = AppearanceMode.Auto;
+                    else appearanceMode = SystemPrefersDarkMode() ? AppearanceMode.Dark : AppearanceMode.Light;
                 }
                 else if (String.Equals(parts[0], "close_behavior", StringComparison.OrdinalIgnoreCase))
                 {
@@ -1168,14 +1283,15 @@ internal sealed class WidgetForm : Form
 
     private static string AppearanceModeValue(AppearanceMode mode)
     {
-        return mode == AppearanceMode.Light ? "light" : mode == AppearanceMode.Dark ? "dark" : "auto";
+        return mode == AppearanceMode.Dark ? "dark" : "light";
     }
 
     private void ApplyTheme()
     {
         BackColor = Theme.Background;
         ForeColor = Theme.Text;
-        brandDot.ForeColor = Theme.Accent;
+        brandDot.AccentColor = Theme.Accent;
+        brandDot.Invalidate();
         titleLabel.ForeColor = Theme.Text;
         todayTitle.ForeColor = Theme.Muted;
         breakdownTitle.ForeColor = Theme.Muted;
@@ -1189,18 +1305,12 @@ internal sealed class WidgetForm : Form
         weeklyDetail.ForeColor = Theme.SoftText;
         fiveHourResetValue.ForeColor = Theme.DimText;
         resetValue.ForeColor = Theme.DimText;
-        statusValue.ForeColor = Theme.DimText;
-        localOnly.ForeColor = Theme.DimText;
         weeklyCard.SurfaceColor = Theme.Card;
         weeklyCard.BackColor = Theme.Background;
         weeklyCard.OutlineColor = Theme.Border;
         weeklyCard.DividerColor = Theme.Divider;
-        fiveHourProgressTrack.BackColor = Theme.Track;
-        progressTrack.BackColor = Theme.Track;
-        UpdatePillRegion(fiveHourProgressTrack);
-        UpdatePillRegion(fiveHourProgressFill);
-        UpdatePillRegion(progressTrack);
-        UpdatePillRegion(progressFill);
+        fiveHourProgressTrack.TrackColor = Theme.Track;
+        progressTrack.TrackColor = Theme.Track;
 
         ApplyButtonTheme(pinButton);
         ApplyButtonTheme(closeButton);
@@ -1222,9 +1332,9 @@ internal sealed class WidgetForm : Form
         compactAccent = usageAccent;
         Color fiveHourAccent = GetQuotaAccent(lastHasFiveHour, lastFiveHourRemainingPercent);
         Color weeklyAccent = GetQuotaAccent(lastHasWeekly, lastWeeklyRemainingPercent);
-        fiveHourProgressFill.BackColor = fiveHourAccent;
+        fiveHourProgressTrack.FillColor = fiveHourAccent;
         fiveHourValue.ForeColor = fiveHourAccent;
-        progressFill.BackColor = weeklyAccent;
+        progressTrack.FillColor = weeklyAccent;
         weeklyValue.ForeColor = weeklyAccent;
 
         contextMenu.BackColor = Theme.Card;
@@ -1237,7 +1347,7 @@ internal sealed class WidgetForm : Form
         ApplyMenuTheme(trayMenu.Items);
         for (int i = 0; i < themeMenuItems.Count; i++) themeMenuItems[i].Checked = i == themeIndex;
         for (int i = 0; i < appearanceMenuItems.Count; i++) appearanceMenuItems[i].Checked = i == (int)appearanceMode;
-        themeButton.Text = appearanceMode == AppearanceMode.Light ? "☀" : appearanceMode == AppearanceMode.Dark ? "☾" : "◐";
+        themeButton.Text = appearanceMode == AppearanceMode.Light ? "☀" : "☾";
         toolTip.SetToolTip(themeButton, (chinese ? "外观：" : "Appearance: ") + AppearanceDisplayName());
         UpdatePinButton();
         weeklyCard.Invalidate();
@@ -1260,8 +1370,7 @@ internal sealed class WidgetForm : Form
     private string AppearanceDisplayName()
     {
         if (appearanceMode == AppearanceMode.Light) return chinese ? "浅色" : "Light";
-        if (appearanceMode == AppearanceMode.Dark) return chinese ? "深色" : "Dark";
-        return chinese ? "自动" : "Auto";
+        return chinese ? "深色" : "Dark";
     }
 
     private void ApplyMenuTheme(ToolStripItemCollection items)
@@ -1306,6 +1415,7 @@ internal sealed class WidgetForm : Form
         weeklyTitle.Text = chinese ? "本周剩余" : "WEEKLY LEFT";
         chineseMenuItem.Checked = chinese;
         englishMenuItem.Checked = !chinese;
+        toolTip.SetToolTip(brandDot, chinese ? "切换到下一个强调色" : "Next accent color");
         toolTip.SetToolTip(themeButton, (chinese ? "外观：" : "Appearance: ") + AppearanceDisplayName());
         UpdatePinButton();
     }
@@ -1449,7 +1559,7 @@ internal sealed class WidgetForm : Form
         if (changingMode || compact == compactMode) return;
         modeTransitionTimer.Stop();
         modeStartBounds = Bounds;
-        Size targetSize = compact ? new Size(CompactDiameter, CompactDiameter) : new Size(PanelWidth, PanelHeight);
+        Size targetSize = compact ? UiSize(CompactDiameter, CompactDiameter) : UiSize(PanelWidth, PanelHeight);
         Rectangle work = Screen.FromRectangle(modeStartBounds).WorkingArea;
         int targetX = Math.Max(work.Left, Math.Min(work.Right - targetSize.Width, modeStartBounds.Right - targetSize.Width));
         int targetY = Math.Max(work.Top, Math.Min(work.Bottom - targetSize.Height, modeStartBounds.Bottom - targetSize.Height));
@@ -1514,10 +1624,10 @@ internal sealed class WidgetForm : Form
         if (detailControls.Count == 0 || expandButton == null) return;
         foreach (Control control in detailControls) control.Visible = !compactMode;
         expandButton.Visible = compactMode;
-        int buttonWidth = Math.Max(22, Math.Min(28, ClientSize.Width / 4));
-        int buttonHeight = Math.Max(18, Math.Min(21, ClientSize.Height / 5));
+        int buttonWidth = Math.Max(Ui(22), Math.Min(Ui(28), ClientSize.Width / 4));
+        int buttonHeight = Math.Max(Ui(18), Math.Min(Ui(21), ClientSize.Height / 5));
         expandButton.Size = new Size(buttonWidth, buttonHeight);
-        expandButton.Location = new Point((ClientSize.Width - buttonWidth) / 2, Math.Max(11, ClientSize.Height / 8));
+        expandButton.Location = new Point((ClientSize.Width - buttonWidth) / 2, Math.Max(Ui(11), ClientSize.Height / 8));
 
         if (compactMode)
         {
@@ -1539,75 +1649,94 @@ internal sealed class WidgetForm : Form
 
     private void ApplyPanelLayout()
     {
-        bool full = ClientSize.Width >= FullLayoutWidth;
-        bool showDetail = full && ClientSize.Height >= DetailLayoutHeight;
-        bool showWeekly = ClientSize.Height >= WeeklyLayoutHeight;
+        brandDot.Bounds = new Rectangle(Ui(8), Ui(9), Ui(26), Ui(28));
+        titleLabel.Location = new Point(Ui(37), Ui(14));
+        titleLabel.Height = Ui(22);
+        languageToggle.Size = UiSize(44, 21);
+        themeButton.Size = UiSize(36, 27);
+        pinButton.Size = UiSize(40, 27);
+        closeButton.Size = UiSize(27, 27);
+        todayTitle.Bounds = new Rectangle(Ui(20), Ui(55), Ui(140), Ui(18));
+        todayValue.Location = new Point(Ui(18), Ui(70));
+        breakdownTitle.Size = UiSize(105, 18);
+        inputValue.Size = UiSize(110, 17);
+        outputValue.Size = UiSize(110, 17);
+        cacheValue.Size = UiSize(110, 16);
+        fiveHourTitle.Height = Ui(16);
+        fiveHourValue.Height = Ui(25);
+        fiveHourDetail.Height = Ui(15);
+        fiveHourResetValue.Height = Ui(15);
+        weeklyTitle.Height = Ui(16);
+        weeklyValue.Height = Ui(25);
+        weeklyDetail.Height = Ui(15);
+        resetValue.Height = Ui(15);
+        bool full = ClientSize.Width >= Ui(FullLayoutWidth);
+        bool showDetail = full && ClientSize.Height >= Ui(DetailLayoutHeight);
+        bool showWeekly = ClientSize.Height >= Ui(WeeklyLayoutHeight);
         bool showCache = showDetail || (!full && showWeekly);
-        bool showStatus = ClientSize.Height >= StatusLayoutHeight;
         languageToggle.Visible = full;
         themeButton.Visible = full;
         pinButton.Visible = full;
         breakdownTitle.Visible = showDetail;
         inputValue.Visible = showDetail;
         outputValue.Visible = showDetail;
-        localOnly.Visible = full && showStatus;
         cacheValue.Visible = showCache;
         weeklyCard.Visible = showWeekly;
-        statusValue.Visible = showStatus;
 
-        closeButton.Location = new Point(ClientSize.Width - 32, 12);
-        titleLabel.Width = full ? 130 : Math.Max(80, closeButton.Left - titleLabel.Left - 5);
-        weeklyCard.Location = new Point(16, 135);
-        weeklyCard.Size = new Size(Math.Max(1, ClientSize.Width - 32), 108);
-        statusValue.Location = new Point(18, Math.Max(0, ClientSize.Height - 29));
-        statusValue.Width = Math.Max(120, ClientSize.Width - (full ? 100 : 30));
+        closeButton.Location = new Point(ClientSize.Width - Ui(32), Ui(12));
+        weeklyCard.Location = new Point(Ui(16), Ui(135));
+        weeklyCard.Size = new Size(Math.Max(1, ClientSize.Width - Ui(32)), Ui(120));
+        weeklyCard.CornerRadius = Ui(15);
+        weeklyCard.DividerY = Ui(60);
 
         if (full)
         {
-            languageToggle.Location = new Point(188, 13);
-            themeButton.Location = new Point(239, 12);
-            pinButton.Location = new Point(283, 12);
-            breakdownTitle.Location = new Point(236, 54);
-            inputValue.Location = new Point(236, 75);
-            outputValue.Location = new Point(236, 93);
-            cacheValue.Location = new Point(236, 111);
-            cacheValue.Size = new Size(110, 16);
+            pinButton.Location = new Point(closeButton.Left - Ui(44), Ui(12));
+            themeButton.Location = new Point(pinButton.Left - Ui(44), Ui(12));
+            languageToggle.Location = new Point(themeButton.Left - Ui(51), Ui(13));
+            titleLabel.Width = Math.Max(Ui(130), languageToggle.Left - titleLabel.Left - Ui(8));
+            int detailLeft = ClientSize.Width - Ui(124);
+            breakdownTitle.Location = new Point(detailLeft, Ui(54));
+            inputValue.Location = new Point(detailLeft, Ui(75));
+            outputValue.Location = new Point(detailLeft, Ui(93));
+            cacheValue.Location = new Point(detailLeft, Ui(111));
+            cacheValue.Size = UiSize(110, 16);
             cacheValue.TextAlign = ContentAlignment.MiddleLeft;
-            todayValue.Size = new Size(180, 45);
-            localOnly.Location = new Point(ClientSize.Width - 93, Math.Max(0, ClientSize.Height - 29));
+            todayValue.Size = new Size(Math.Max(Ui(180), detailLeft - todayValue.Left - Ui(12)), Ui(50));
         }
         else
         {
-            cacheValue.Location = new Point(16, 108);
-            cacheValue.Size = new Size(Math.Max(1, ClientSize.Width - 32), 18);
+            titleLabel.Width = Math.Max(Ui(80), closeButton.Left - titleLabel.Left - Ui(5));
+            cacheValue.Location = new Point(Ui(16), Ui(108));
+            cacheValue.Size = new Size(Math.Max(1, ClientSize.Width - Ui(32)), Ui(18));
             cacheValue.TextAlign = ContentAlignment.MiddleCenter;
-            todayValue.Size = new Size(Math.Max(1, ClientSize.Width - 32), 45);
+            todayValue.Size = new Size(Math.Max(1, ClientSize.Width - Ui(32)), Ui(50));
         }
 
         int weeklyWidth = weeklyCard.ClientSize.Width;
-        fiveHourTitle.Location = new Point(13, 6);
-        fiveHourTitle.Width = full ? 130 : Math.Max(68, weeklyWidth - 86);
-        fiveHourValue.Location = new Point(Math.Max(76, weeklyWidth - 103), 3);
-        fiveHourValue.Size = new Size(Math.Min(90, Math.Max(58, weeklyWidth - 89)), 23);
-        fiveHourProgressTrack.Location = new Point(13, 27);
-        fiveHourProgressTrack.Size = new Size(Math.Max(1, weeklyWidth - 26), 6);
-        fiveHourDetail.Location = new Point(13, 35);
-        fiveHourDetail.Width = full ? 170 : Math.Max(1, weeklyWidth - 26);
+        fiveHourTitle.Location = new Point(Ui(13), Ui(6));
+        fiveHourTitle.Width = full ? Ui(130) : Math.Max(Ui(68), weeklyWidth - Ui(86));
+        fiveHourValue.Location = new Point(Math.Max(Ui(76), weeklyWidth - Ui(103)), Ui(3));
+        fiveHourValue.Size = new Size(Math.Min(Ui(90), Math.Max(Ui(58), weeklyWidth - Ui(89))), Ui(25));
+        fiveHourProgressTrack.Location = new Point(Ui(13), Ui(28));
+        fiveHourProgressTrack.Size = new Size(Math.Max(1, weeklyWidth - Ui(26)), Ui(7));
+        fiveHourDetail.Location = new Point(Ui(13), Ui(38));
+        fiveHourDetail.Width = full ? Ui(170) : Math.Max(1, weeklyWidth - Ui(26));
         fiveHourResetValue.Visible = full && showWeekly;
-        fiveHourResetValue.Location = new Point(Math.Max(13, weeklyWidth - 139), 35);
-        fiveHourResetValue.Width = 126;
+        fiveHourResetValue.Location = new Point(Math.Max(Ui(13), weeklyWidth - Ui(139)), Ui(38));
+        fiveHourResetValue.Width = Ui(126);
 
-        weeklyTitle.Location = new Point(13, 56);
-        weeklyTitle.Width = full ? 130 : Math.Max(68, weeklyWidth - 86);
-        weeklyValue.Location = new Point(Math.Max(76, weeklyWidth - 103), 53);
-        weeklyValue.Size = new Size(Math.Min(90, Math.Max(58, weeklyWidth - 89)), 23);
-        progressTrack.Location = new Point(13, 77);
-        progressTrack.Size = new Size(Math.Max(1, weeklyWidth - 26), 6);
-        weeklyDetail.Location = new Point(13, 85);
-        weeklyDetail.Width = full ? 170 : Math.Max(1, weeklyWidth - 26);
+        weeklyTitle.Location = new Point(Ui(13), Ui(62));
+        weeklyTitle.Width = full ? Ui(130) : Math.Max(Ui(68), weeklyWidth - Ui(86));
+        weeklyValue.Location = new Point(Math.Max(Ui(76), weeklyWidth - Ui(103)), Ui(59));
+        weeklyValue.Size = new Size(Math.Min(Ui(90), Math.Max(Ui(58), weeklyWidth - Ui(89))), Ui(25));
+        progressTrack.Location = new Point(Ui(13), Ui(85));
+        progressTrack.Size = new Size(Math.Max(1, weeklyWidth - Ui(26)), Ui(7));
+        weeklyDetail.Location = new Point(Ui(13), Ui(94));
+        weeklyDetail.Width = full ? Ui(170) : Math.Max(1, weeklyWidth - Ui(26));
         resetValue.Visible = full && showWeekly;
-        resetValue.Location = new Point(Math.Max(13, weeklyWidth - 139), 85);
-        resetValue.Width = 126;
+        resetValue.Location = new Point(Math.Max(Ui(13), weeklyWidth - Ui(139)), Ui(94));
+        resetValue.Width = Ui(126);
         if (full)
         {
             languageToggle.BringToFront();
@@ -1616,10 +1745,6 @@ internal sealed class WidgetForm : Form
         }
         fiveHourValue.BringToFront();
         weeklyValue.BringToFront();
-        UpdatePillRegion(fiveHourProgressTrack);
-        UpdatePillRegion(fiveHourProgressFill);
-        UpdatePillRegion(progressTrack);
-        UpdatePillRegion(progressFill);
     }
 
     private void UpdateCompactHover()
@@ -1639,6 +1764,7 @@ internal sealed class WidgetForm : Form
     private void UpdateWindowRegion()
     {
         if (ClientSize.Width <= 0 || ClientSize.Height <= 0) return;
+        ApplyDwmCornerPreference(1);
         GraphicsPath path;
         if (changingMode)
         {
@@ -1652,7 +1778,7 @@ internal sealed class WidgetForm : Form
         }
         else
         {
-            path = RoundedPath(new Rectangle(0, 0, ClientSize.Width, ClientSize.Height), PanelCornerRadius);
+            path = RoundedPath(new Rectangle(0, 0, ClientSize.Width, ClientSize.Height), Ui(PanelCornerRadius));
         }
 
         Region oldRegion = Region;
@@ -1661,14 +1787,21 @@ internal sealed class WidgetForm : Form
         path.Dispose();
     }
 
+    private void ApplyDwmCornerPreference(int preference)
+    {
+        if (!IsHandleCreated || Environment.OSVersion.Version.Build < 22000) return;
+        try { DwmSetWindowAttribute(Handle, 33, ref preference, sizeof(int)); }
+        catch { }
+    }
+
     private int CurrentCornerRadius()
     {
         int half = Math.Max(2, Math.Min(ClientSize.Width, ClientSize.Height) / 2);
-        if (!changingMode) return compactMode ? half : PanelCornerRadius;
+        if (!changingMode) return compactMode ? half : Ui(PanelCornerRadius);
         double raw = Math.Max(0, Math.Min(1, modeProgress));
         return modeTargetCompact
-            ? (int)Math.Round(PanelCornerRadius * (1 - raw) + half * raw)
-            : (int)Math.Round(half * (1 - raw) + PanelCornerRadius * raw);
+            ? (int)Math.Round(Ui(PanelCornerRadius) * (1 - raw) + half * raw)
+            : (int)Math.Round(half * (1 - raw) + Ui(PanelCornerRadius) * raw);
     }
 
     private static GraphicsPath RoundedPath(Rectangle bounds, int radius)
@@ -1687,17 +1820,6 @@ internal sealed class WidgetForm : Form
         return path;
     }
 
-    private static void UpdatePillRegion(Control control)
-    {
-        if (control == null || control.Width <= 1 || control.Height <= 1) return;
-        using (GraphicsPath path = RoundedPath(new Rectangle(0, 0, control.Width, control.Height), Math.Max(2, control.Height / 2)))
-        {
-            Region old = control.Region;
-            control.Region = new Region(path);
-            if (old != null) old.Dispose();
-        }
-    }
-
     private static string Compact(long value)
     {
         if (value >= 1000000000) return (value / 1000000000.0).ToString("0.00", CultureInfo.InvariantCulture) + "B";
@@ -1709,9 +1831,7 @@ internal sealed class WidgetForm : Form
     private async void RefreshSnapshot()
     {
         if (refreshing || IsDisposed) return;
-        RefreshAutomaticAppearance();
         refreshing = true;
-        statusValue.Text = "Refreshing local Codex data...";
         try
         {
             UsageSnapshot snapshot = await Task.Run((Func<UsageSnapshot>)UsageReader.Read);
@@ -1727,8 +1847,8 @@ internal sealed class WidgetForm : Form
             lastWeeklyRemainingPercent = snapshot.Weekly.RemainingPercent;
 
             string plan = String.IsNullOrEmpty(snapshot.Plan) ? "CODEX" : snapshot.Plan.ToUpperInvariant();
-            ApplyQuotaWindow(snapshot.FiveHour, fiveHourValue, fiveHourDetail, fiveHourResetValue, fiveHourProgressTrack, fiveHourProgressFill, false, plan);
-            ApplyQuotaWindow(snapshot.Weekly, weeklyValue, weeklyDetail, resetValue, progressTrack, progressFill, true, plan);
+            ApplyQuotaWindow(snapshot.FiveHour, fiveHourValue, fiveHourDetail, fiveHourResetValue, fiveHourProgressTrack, false, plan);
+            ApplyQuotaWindow(snapshot.Weekly, weeklyValue, weeklyDetail, resetValue, progressTrack, true, plan);
             BeginValueAnimation();
 
             if (lastHasFiveHour && lastHasWeekly) lastRemainingPercent = Math.Min(lastFiveHourRemainingPercent, lastWeeklyRemainingPercent);
@@ -1753,13 +1873,9 @@ internal sealed class WidgetForm : Form
             compactResetText = String.Join("\n", compactLines.ToArray());
             toolTip.SetToolTip(expandButton, (chinese ? "返回完整面板" : "Back to full panel") + (compactToolTipLines.Count > 0 ? "\n" + String.Join("\n", compactToolTipLines.ToArray()) : ""));
             compactAccent = GetUsageAccent();
-            statusValue.Text = "Updated " + snapshot.GeneratedAt.ToString("HH:mm:ss") + " | every 5s" + (snapshot.Partial ? " | partial history" : "");
             Invalidate();
         }
-        catch
-        {
-            statusValue.Text = "Waiting for Codex session data...";
-        }
+        catch { }
         finally { refreshing = false; }
     }
 
@@ -1793,14 +1909,12 @@ internal sealed class WidgetForm : Form
 
     private void UpdateAnimatedQuotaVisuals()
     {
-        fiveHourProgressFill.Width = Math.Max(0, Math.Min(fiveHourProgressTrack.Width, (int)Math.Round(fiveHourProgressTrack.Width * animatedFiveHourRemaining / 100.0)));
-        progressFill.Width = Math.Max(0, Math.Min(progressTrack.Width, (int)Math.Round(progressTrack.Width * animatedWeeklyRemaining / 100.0)));
-        UpdatePillRegion(fiveHourProgressFill);
-        UpdatePillRegion(progressFill);
+        fiveHourProgressTrack.Value = animatedFiveHourRemaining;
+        progressTrack.Value = animatedWeeklyRemaining;
         if (compactMode) Invalidate();
     }
 
-    private void ApplyQuotaWindow(QuotaWindowSnapshot quota, Label value, Label detail, Label reset, Panel track, Panel fill, bool includePlan, string plan)
+    private void ApplyQuotaWindow(QuotaWindowSnapshot quota, Label value, Label detail, Label reset, SmoothProgressBar progress, bool includePlan, string plan)
     {
         if (!quota.Available)
         {
@@ -1808,7 +1922,7 @@ internal sealed class WidgetForm : Form
             detail.Text = chinese ? "暂无额度数据" : "No quota sample yet";
             reset.Text = "";
             value.ForeColor = Theme.Muted;
-            fill.BackColor = Theme.Muted;
+            progress.FillColor = Theme.Muted;
             return;
         }
 
@@ -1816,7 +1930,7 @@ internal sealed class WidgetForm : Form
         detail.Text = quota.UsedPercent.ToString("0.#", CultureInfo.InvariantCulture) + (chinese ? "% 已用" : "% used") + (includePlan ? "  |  " + plan : "");
         reset.Text = quota.HasReset ? "RESET " + quota.ResetAt.ToString("MM-dd HH:mm") : "";
         Color accent = GetQuotaAccent(true, quota.RemainingPercent);
-        fill.BackColor = accent;
+        progress.FillColor = accent;
         value.ForeColor = accent;
         toolTip.SetToolTip(value, (chinese ? "剩余 " : "Remaining ") + quota.RemainingPercent.ToString("0.#", CultureInfo.InvariantCulture) + "%" + (quota.HasReset ? " | " + reset.Text : ""));
     }
@@ -1838,9 +1952,8 @@ internal sealed class WidgetForm : Form
             bool horizontalEdge = edge == 1 || edge == 2;
             bool verticalEdge = edge == 3 || edge == 6;
             int target = horizontalEdge ? proposedWidth : verticalEdge ? proposedHeight : Math.Max(proposedWidth, proposedHeight);
-            float dpiScale = DeviceDpi / 96F;
-            int minTarget = (int)Math.Round(CompactDiameter * dpiScale);
-            int maxTarget = (int)Math.Round(CompactMaxDiameter * dpiScale);
+            int minTarget = Ui(CompactDiameter);
+            int maxTarget = Ui(CompactMaxDiameter);
             target = Math.Max(minTarget, Math.Min(maxTarget, target));
 
             switch (edge)
@@ -1862,12 +1975,12 @@ internal sealed class WidgetForm : Form
             int edge = m.WParam.ToInt32();
             int rawWidth = rect.Right - rect.Left;
             int rawHeight = rect.Bottom - rect.Top;
-            bool widthAtMinimum = rawWidth <= PanelMinimumWidth || ClientSize.Width <= PanelMinimumWidth + 1;
-            bool heightAtMinimum = rawHeight <= PanelMinimumHeight || ClientSize.Height <= PanelMinimumHeight + 1;
-            bool pushedPastMinimum = rawWidth <= CompactDragTriggerWidth || rawHeight <= CompactDragTriggerHeight;
+            bool widthAtMinimum = rawWidth <= Ui(PanelMinimumWidth) || ClientSize.Width <= Ui(PanelMinimumWidth) + 1;
+            bool heightAtMinimum = rawHeight <= Ui(PanelMinimumHeight) || ClientSize.Height <= Ui(PanelMinimumHeight) + 1;
+            bool pushedPastMinimum = rawWidth <= Ui(CompactDragTriggerWidth) || rawHeight <= Ui(CompactDragTriggerHeight);
             if (widthAtMinimum && heightAtMinimum && pushedPastMinimum) compactCollapseRequested = true;
-            int targetWidth = Math.Max(PanelMinimumWidth, Math.Min(PanelWidth, rawWidth));
-            int targetHeight = Math.Max(PanelMinimumHeight, Math.Min(PanelHeight, rawHeight));
+            int targetWidth = Math.Max(Ui(PanelMinimumWidth), Math.Min(Ui(PanelWidth), rawWidth));
+            int targetHeight = Math.Max(Ui(PanelMinimumHeight), Math.Min(Ui(PanelHeight), rawHeight));
             bool fromLeft = edge == 1 || edge == 4 || edge == 7;
             bool fromTop = edge == 3 || edge == 4 || edge == 5;
             if (fromLeft) rect.Left = rect.Right - targetWidth; else rect.Right = rect.Left + targetWidth;
@@ -1885,7 +1998,7 @@ internal sealed class WidgetForm : Form
             if ((int)m.Result == 1)
             {
                 Point cursor = PointToClient(Cursor.Position);
-                const int grip = 8;
+                int grip = Ui(8);
                 bool left = cursor.X <= grip;
                 bool right = cursor.X >= ClientSize.Width - grip;
                 bool top = cursor.Y <= grip;
@@ -1908,12 +2021,8 @@ internal sealed class WidgetForm : Form
     {
         base.OnResize(e);
         UpdateLayoutMode();
-        if (progressTrack != null && progressFill != null)
-            progressFill.Width = Math.Max(0, Math.Min(progressTrack.Width, (int)Math.Round(progressTrack.Width * animatedWeeklyRemaining / 100.0)));
-        if (fiveHourProgressTrack != null && fiveHourProgressFill != null)
-            fiveHourProgressFill.Width = Math.Max(0, Math.Min(fiveHourProgressTrack.Width, (int)Math.Round(fiveHourProgressTrack.Width * animatedFiveHourRemaining / 100.0)));
-        UpdatePillRegion(progressFill);
-        UpdatePillRegion(fiveHourProgressFill);
+        if (progressTrack != null) progressTrack.Value = animatedWeeklyRemaining;
+        if (fiveHourProgressTrack != null) fiveHourProgressTrack.Value = animatedFiveHourRemaining;
         Invalidate(true);
         if (IsHandleCreated)
             RedrawWindow(Handle, IntPtr.Zero, IntPtr.Zero, 0x0001 | 0x0004 | 0x0080 | 0x0400);
@@ -1927,7 +2036,10 @@ internal sealed class WidgetForm : Form
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        e.Graphics.SmoothingMode = SmoothingMode.HighQuality;
+        e.Graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+        e.Graphics.CompositingQuality = CompositingQuality.HighQuality;
+        e.Graphics.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
         if (compactMode)
         {
             int inset = Math.Max(5, Math.Min(ClientSize.Width, ClientSize.Height) / 14);
@@ -1949,8 +2061,9 @@ internal sealed class WidgetForm : Form
                 DrawQuotaRing(e.Graphics, outerBounds, ringWidth, 0, Theme.Muted, hoverTrack);
 
             Color accent = Blend(compactAccent, Theme.Text, 0.22F * compactHoverAmount);
-            float normalFontSize = Math.Max(14F, Math.Min(26F, Math.Min(ClientSize.Width, ClientSize.Height) * 0.21F));
-            float hoverFontSize = Math.Max(10F, Math.Min(16F, Math.Min(ClientSize.Width, ClientSize.Height) * 0.15F));
+            float logicalDiameter = Math.Min(ClientSize.Width, ClientSize.Height) / DpiScale;
+            float normalFontSize = Math.Max(13F, Math.Min(23F, logicalDiameter * 0.185F));
+            float hoverFontSize = Math.Max(9.5F, Math.Min(15F, logicalDiameter * 0.135F));
             float fontSize = normalFontSize + (hoverFontSize - normalFontSize) * compactHoverAmount;
             float textY = ClientSize.Height * (0.25F - 0.01F * compactHoverAmount);
             float textHeight = ClientSize.Height * (0.62F - 0.35F * compactHoverAmount);
@@ -1961,7 +2074,7 @@ internal sealed class WidgetForm : Form
                 e.Graphics.DrawString(compactText, font, brush, textBounds, format);
             if (compactHoverAmount > 0.01F && !String.IsNullOrEmpty(compactResetText))
             {
-                float resetFontSize = Math.Max(4.6F, Math.Min(5.8F, ClientSize.Width * 0.052F));
+                float resetFontSize = Math.Max(4.6F, Math.Min(5.8F, ClientSize.Width / DpiScale * 0.052F));
                 RectangleF resetBounds = new RectangleF(4, ClientSize.Height * 0.49F, ClientSize.Width - 8, ClientSize.Height * 0.34F);
                 using (var resetFont = new Font(UiFontName, resetFontSize, FontStyle.Regular))
                 using (var resetBrush = new SolidBrush(Color.FromArgb((int)Math.Round(255 * compactHoverAmount), Blend(Theme.Muted, Theme.Text, 0.18F))))
@@ -1980,14 +2093,21 @@ internal sealed class WidgetForm : Form
     private void DrawQuotaRing(Graphics graphics, Rectangle bounds, int width, double remainingPercent, Color accent, Color trackColor)
     {
         Color renderedAccent = Blend(accent, Theme.Text, 0.22F * compactHoverAmount);
+        float half = width / 2F + 0.5F;
+        RectangleF smoothBounds = new RectangleF(bounds.X + half, bounds.Y + half,
+            Math.Max(1F, bounds.Width - half * 2F), Math.Max(1F, bounds.Height - half * 2F));
         using (var track = new Pen(trackColor, width))
-            graphics.DrawEllipse(track, bounds);
+        {
+            track.Alignment = PenAlignment.Center;
+            graphics.DrawEllipse(track, smoothBounds);
+        }
         using (var progress = new Pen(renderedAccent, width))
         {
             progress.StartCap = LineCap.Round;
             progress.EndCap = LineCap.Round;
+            progress.Alignment = PenAlignment.Center;
             float sweep = (float)Math.Max(0, Math.Min(359.9, 360.0 * remainingPercent / 100.0));
-            if (sweep > 0) graphics.DrawArc(progress, bounds, -90, sweep);
+            if (sweep > 0) graphics.DrawArc(progress, smoothBounds, -90, sweep);
         }
     }
 }
@@ -1995,6 +2115,20 @@ internal sealed class WidgetForm : Form
 internal static class Program
 {
     private static Mutex instanceMutex;
+    [DllImport("user32.dll")] private static extern bool SetProcessDPIAware();
+    [DllImport("user32.dll")] private static extern bool SetProcessDpiAwarenessContext(IntPtr dpiContext);
+
+    private static void EnableHighDpiRendering()
+    {
+        try
+        {
+            if (SetProcessDpiAwarenessContext(new IntPtr(-4))) return;
+        }
+        catch (EntryPointNotFoundException) { }
+        catch { }
+        try { SetProcessDPIAware(); }
+        catch { }
+    }
 
     [STAThread]
     private static void Main()
@@ -2002,6 +2136,7 @@ internal static class Program
         bool created;
         instanceMutex = new Mutex(true, "Local\\GPTUsageWidgetNative", out created);
         if (!created) return;
+        EnableHighDpiRendering();
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         bool startCompact = Environment.GetCommandLineArgs().Any(arg => String.Equals(arg, "--compact", StringComparison.OrdinalIgnoreCase));

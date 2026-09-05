@@ -6,3 +6,6 @@ release/
 *.suo
 *.pdb
 GPTUsageWidget.exe
+!download/GPTUsageWidget.exe
+tools/layout-probe.exe
+tools/layout-output/

@@ -23,7 +23,7 @@ jobs:
 
       - name: Create portable package
         shell: pwsh
-        run: Compress-Archive -Path release/GPTUsageWidget.exe, README.md -DestinationPath GPT-Usage-Widget-win-portable.zip -Force
+        run: Compress-Archive -Path release/GPTUsageWidget.exe, README.md, 使用说明.txt -DestinationPath GPT-Usage-Widget-win-portable.zip -Force
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
