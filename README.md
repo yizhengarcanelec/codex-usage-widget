@@ -8,7 +8,7 @@
     <th>圆形额度球（界面缩小后）</th>
   </tr>
   <tr>
-    <td><img src="docs/展开图.png" alt="Codex Usage Widget 完整面板" width="570"></td>
+    <td><img src="docs/展开图.png" alt="Codex Usage Widget 完整面板" width="400"></td>
     <td align="center"><img src="docs/缩略图.png" alt="Codex Usage Widget 圆形额度球" width="112"></td>
   </tr>
 </table>
