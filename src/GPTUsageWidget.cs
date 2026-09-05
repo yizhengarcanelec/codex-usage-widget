@@ -823,7 +823,9 @@ internal sealed class WidgetForm : Form
         toolTip.SetToolTip(expandButton, "Back to full panel");
         MouseDown += DragWindow;
         DoubleClick += ToggleSizeMode;
-        foreach (Control control in Controls) if (!(control is Button) && control != languageToggle) control.MouseDown += DragWindow;
+        foreach (Control control in Controls)
+            if (!(control is Button) && control != languageToggle && control != expandButton)
+                control.MouseDown += DragWindow;
 
         contextMenu = new ContextMenuStrip();
         contextMenu.Items.Add("展开 / 紧凑", null, delegate { ToggleSizeMode(this, EventArgs.Empty); });
