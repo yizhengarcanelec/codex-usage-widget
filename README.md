@@ -1,12 +1,13 @@
 # Codex Usage Widget
 
-一个轻量、无边框的 Windows 桌面小组件，用于实时查看本机 Codex 的今日 Token、5 小时额度和周额度。所有数据只从本机 Codex 会话记录读取，不需要 API Key，也不会上传会话内容。
+一个轻量、无边框的 Windows 桌面小组件，用于实时查看本机 Codex 的今日 Token、5 小时额度和周额度。v0.6.0 采用受 Apple 设计语言启发的浅色/深色界面、圆角卡片与克制动效。所有数据只从本机 Codex 会话记录读取，不需要 API Key，也不会上传会话内容。
 
 - 今日 Token 总量
 - Input / Output / Cached Token 明细
 - 5 小时额度与周额度的剩余比例、已用比例和独立重置时间
 - 完整面板、窄面板、仅今日 Token 面板和双环圆形额度球
-- CN/EN 中英文切换、五套配色主题和窗口置顶
+- 自动/浅色/深色外观、五种强调色、CN/EN 中英文切换和窗口置顶
+- 约 200ms 的尺寸与颜色过渡，并遵循 Windows“显示动画”设置
 - 系统托盘后台运行，并记住用户选择的关闭行为
 
 <table>
@@ -22,11 +23,19 @@
 
 ## Download for Windows
 
-**[Download Codex Usage Widget v0.5.0](https://github.com/yizhengarcanelec/codex-usage-widget/raw/main/download/Codex-Usage-Widget-v0.5.0-win-portable.zip)**
+**[Download Codex Usage Widget v0.6.0](https://github.com/yizhengarcanelec/codex-usage-widget/raw/main/download/Codex-Usage-Widget-v0.6.0-win-portable.zip)**
 
 下载 ZIP 后解压，双击 `GPTUsageWidget.exe` 即可。便携包内含程序和使用说明，无需安装。
 
-SHA-256：`8E86783A921E8DDDFA3222CA4C365C4EE9B2C232794AEB1693A6AC982ACE53F3`
+SHA-256：`A2CABD6BA66EEE0B73C35A1D4D730A9C40753E0F8DD583DC46260A3B8079ED9A`
+
+## v0.6.0 更新
+
+- 全面改为受 Apple 设计语言启发的视觉：更轻的层级、圆角卡片、胶囊控件和清晰留白。
+- 新增自动、浅色、深色三种外观；自动模式会跟随 Windows 应用颜色设置。
+- 五种主题改为统一的强调色体系：Apple Green、California Blue、Orchid Purple、Watermelon Pink、Sunset Orange。
+- 外观、强调色和紧凑模式切换加入克制的缓动过渡；系统关闭动画效果时会自动停用动效。
+- 圆形额度球沿用双环设计，悬停时显示重置日期；展开箭头改为无底色、低存在感的细线控件，不再遮挡圆环。
 
 ## v0.5.0 更新
 
@@ -46,7 +55,8 @@ SHA-256：`8E86783A921E8DDDFA3222CA4C365C4EE9B2C232794AEB1693A6AC982ACE53F3`
 - 圆球大小可在 84×84 到 132×132 之间等比例缩放；内环显示 5 小时额度，外环显示周额度，中心显示两者中更紧张的剩余比例。
 - 圆球悬停时进度环轻微提亮，并分别显示 5 小时与周额度的重置日期。
 - 双击窗口或使用右键菜单，可在圆球与标准面板之间快速切换。
-- 支持 CN/EN 中英文切换和五套配色主题，并会保存选择。
+- 支持 CN/EN 中英文切换；外观模式、强调色和语言选择都会保存。
+- 顶部外观按钮在自动、浅色、深色之间循环；右键菜单可直接选择指定外观和强调色。
 - 右键窗口可立即刷新、切换置顶、切换尺寸、最小化或退出，菜单项均为中文。
 - 首次点击 `X` 会询问“彻底结束程序”或“最小化至后台”；选择会被记住，之后可在右键的“关闭行为”中修改。
 - 选择“最小化至后台”后，窗口和任务栏图标都会隐藏，程序继续刷新并驻留在 Windows 系统托盘；双击托盘图标可恢复窗口。
