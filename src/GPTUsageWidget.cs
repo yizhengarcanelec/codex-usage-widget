@@ -417,6 +417,89 @@ internal sealed class LanguageToggle : Control
     }
 }
 
+internal sealed class SmoothButton : Button
+{
+    public Color SurfaceColor = Color.FromArgb(237, 237, 240);
+    public Color HoverColor = Color.FromArgb(229, 229, 234);
+    public Color PressedColor = Color.FromArgb(218, 218, 223);
+    private bool hovered;
+    private bool pressed;
+
+    public SmoothButton()
+    {
+        FlatStyle = FlatStyle.Flat;
+        FlatAppearance.BorderSize = 0;
+        TabStop = false;
+        Cursor = Cursors.Hand;
+        UseVisualStyleBackColor = false;
+        SetStyle(ControlStyles.UserPaint | ControlStyles.SupportsTransparentBackColor |
+                 ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer |
+                 ControlStyles.ResizeRedraw, true);
+        BackColor = Color.Transparent;
+    }
+
+    protected override void OnMouseEnter(EventArgs e)
+    {
+        hovered = true;
+        Invalidate();
+        base.OnMouseEnter(e);
+    }
+
+    protected override void OnMouseLeave(EventArgs e)
+    {
+        hovered = false;
+        pressed = false;
+        Invalidate();
+        base.OnMouseLeave(e);
+    }
+
+    protected override void OnMouseDown(MouseEventArgs mevent)
+    {
+        if (mevent.Button == MouseButtons.Left) pressed = true;
+        Invalidate();
+        base.OnMouseDown(mevent);
+    }
+
+    protected override void OnMouseUp(MouseEventArgs mevent)
+    {
+        pressed = false;
+        Invalidate();
+        base.OnMouseUp(mevent);
+    }
+
+    protected override void OnPaintBackground(PaintEventArgs e)
+    {
+        e.Graphics.Clear(BackColor);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        e.Graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+        Color fill = pressed ? PressedColor : hovered ? HoverColor : SurfaceColor;
+        RectangleF bounds = new RectangleF(0.6F, 0.6F, Math.Max(1F, Width - 1.2F), Math.Max(1F, Height - 1.2F));
+        using (GraphicsPath path = PillPath(bounds))
+        using (var brush = new SolidBrush(fill))
+            e.Graphics.FillPath(brush, path);
+
+        using (var brush = new SolidBrush(ForeColor))
+        using (var format = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center })
+            e.Graphics.DrawString(Text, Font, brush, new RectangleF(0, 0, Width, Height), format);
+    }
+
+    private static GraphicsPath PillPath(RectangleF bounds)
+    {
+        var path = new GraphicsPath();
+        float diameter = Math.Max(2F, Math.Min(bounds.Width, bounds.Height));
+        var arc = new RectangleF(bounds.Left, bounds.Top, diameter, diameter);
+        path.AddArc(arc, 90, 180);
+        arc.X = bounds.Right - diameter;
+        path.AddArc(arc, 270, 180);
+        path.CloseFigure();
+        return path;
+    }
+}
+
 internal sealed class CompactExpandButton : Control
 {
     public Color SurfaceColor = Color.FromArgb(28, 28, 30);
@@ -669,10 +752,10 @@ internal sealed class WidgetForm : Form
         }
         return new WidgetTheme(
             "Light · " + palette.Name,
-            Color.FromArgb(246, 246, 248), Color.FromArgb(255, 255, 255), Color.FromArgb(218, 218, 223),
-            Color.FromArgb(29, 29, 31), Color.FromArgb(99, 99, 102), Color.FromArgb(72, 72, 74),
-            Color.FromArgb(142, 142, 147), accent, Color.FromArgb(229, 229, 234), Color.FromArgb(237, 237, 240),
-            Color.FromArgb(232, 232, 236), false);
+            Color.FromArgb(239, 240, 243), Color.FromArgb(248, 248, 250), Color.FromArgb(209, 211, 216),
+            Color.FromArgb(31, 31, 33), Color.FromArgb(104, 104, 108), Color.FromArgb(73, 73, 76),
+            Color.FromArgb(145, 145, 150), accent, Color.FromArgb(218, 220, 225), Color.FromArgb(226, 228, 232),
+            Color.FromArgb(224, 225, 229), false);
     }
 
     private static bool SystemPrefersDarkMode()
@@ -913,11 +996,7 @@ internal sealed class WidgetForm : Form
 
     private static Button MakeButton(string text, int x, int y, int width, int height)
     {
-        var button = new Button { Text = text, Location = new Point(x, y), Size = new Size(width, height), FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(237, 237, 240), ForeColor = Color.FromArgb(99, 99, 102), Font = new Font(UiFontName, 7.5F, FontStyle.Bold), TabStop = false, Cursor = Cursors.Hand, UseVisualStyleBackColor = false };
-        button.FlatAppearance.BorderSize = 0;
-        button.FlatAppearance.BorderColor = Color.FromArgb(218, 218, 223);
-        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(229, 229, 234);
-        button.FlatAppearance.MouseDownBackColor = Color.FromArgb(218, 218, 223);
+        var button = new SmoothButton { Text = text, Location = new Point(x, y), Size = new Size(width, height), ForeColor = Color.FromArgb(99, 99, 102), Font = new Font(UiFontName, 7.5F, FontStyle.Bold) };
         return button;
     }
 
@@ -1165,17 +1244,23 @@ internal sealed class WidgetForm : Form
 
     private void ApplyButtonTheme(Button button)
     {
-        button.BackColor = Theme.Button;
         button.ForeColor = Theme.Muted;
+        SmoothButton smooth = button as SmoothButton;
+        if (smooth != null)
+        {
+            smooth.BackColor = Theme.Background;
+            smooth.SurfaceColor = Theme.Button;
+            smooth.HoverColor = Blend(Theme.Button, Theme.Accent, Theme.IsDark ? 0.18F : 0.10F);
+            smooth.PressedColor = Blend(Theme.Button, Theme.Accent, Theme.IsDark ? 0.28F : 0.18F);
+            Region old = smooth.Region;
+            smooth.Region = null;
+            if (old != null) old.Dispose();
+            smooth.Invalidate();
+            return;
+        }
+
+        button.BackColor = Theme.Button;
         button.FlatAppearance.BorderSize = 0;
-        button.FlatAppearance.BorderColor = Theme.Border;
-        button.FlatAppearance.MouseOverBackColor = Blend(Theme.Button, Theme.Accent, Theme.IsDark ? 0.18F : 0.10F);
-        button.FlatAppearance.MouseDownBackColor = Blend(Theme.Button, Theme.Accent, Theme.IsDark ? 0.28F : 0.18F);
-        GraphicsPath path = RoundedPath(new Rectangle(0, 0, Math.Max(1, button.Width), Math.Max(1, button.Height)), Math.Max(4, button.Height / 2));
-        Region old = button.Region;
-        button.Region = new Region(path);
-        if (old != null) old.Dispose();
-        path.Dispose();
     }
 
     private string AppearanceDisplayName()
